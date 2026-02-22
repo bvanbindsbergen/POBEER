@@ -17,6 +17,16 @@ function formatUsd(value: number | string | null | undefined) {
   }).format(num);
 }
 
+function formatEur(value: number | string | null | undefined) {
+  const num = Number(value) || 0;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
     year: "numeric",
@@ -35,6 +45,14 @@ interface Invoice {
   invoiceAmount: number;
   daysInQuarter: number;
   daysActive: number;
+  baseFee: number | null;
+  bracketFee: number | null;
+  bracketLabel: string | null;
+  startEquity: number | null;
+  endEquity: number | null;
+  netDeposits: number | null;
+  netWithdrawals: number | null;
+  quarterProfit: number | null;
   status: string;
   paidAt: string | null;
   paidVia: string | null;
@@ -114,6 +132,8 @@ export default function InvoicePaymentPage({
   }
 
   const isPaid = invoice.status === "paid";
+  const hasTieredBreakdown = invoice.baseFee != null;
+  const profit = Number(invoice.quarterProfit) || 0;
 
   return (
     <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center p-4">
@@ -134,7 +154,7 @@ export default function InvoicePaymentPage({
         <Card className="bg-[#111827] border-white/[0.06]">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold text-foreground">
-              Quarterly Maintenance Invoice
+              Quarterly Invoice
             </CardTitle>
             <p className="text-sm text-muted-foreground">
               {invoice.quarterLabel} &middot; {formatDate(invoice.periodStart)}{" "}
@@ -150,18 +170,102 @@ export default function InvoicePaymentPage({
                   {invoice.followerName}
                 </span>
               </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-slate-400">Average Balance</span>
-                <span className="text-sm font-mono font-medium text-foreground">
-                  {formatUsd(invoice.avgBalance)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-slate-400">Maintenance Fee</span>
-                <span className="text-sm font-mono font-medium text-foreground">
-                  {invoice.feePercent}%
-                </span>
-              </div>
+
+              {hasTieredBreakdown ? (
+                <>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">
+                      Start Equity
+                    </span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {formatUsd(invoice.startEquity)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">End Equity</span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {formatUsd(invoice.endEquity)}
+                    </span>
+                  </div>
+                  {Number(invoice.netDeposits) > 0 && (
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm text-slate-400">
+                        Net Deposits
+                      </span>
+                      <span className="text-sm font-mono font-medium text-foreground">
+                        {formatUsd(invoice.netDeposits)}
+                      </span>
+                    </div>
+                  )}
+                  {Number(invoice.netWithdrawals) > 0 && (
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm text-slate-400">
+                        Net Withdrawals
+                      </span>
+                      <span className="text-sm font-mono font-medium text-foreground">
+                        {formatUsd(invoice.netWithdrawals)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">
+                      Quarter Profit
+                    </span>
+                    <span
+                      className={`text-sm font-mono font-semibold ${
+                        profit >= 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {profit >= 0 ? "+" : ""}
+                      {formatUsd(profit)}
+                    </span>
+                  </div>
+
+                  <div className="border-t border-white/[0.06]" />
+
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">Bracket</span>
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-mono border-violet-500/30 text-violet-400"
+                    >
+                      {invoice.bracketLabel}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">Base Fee</span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {formatEur(invoice.baseFee)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">Bracket Fee</span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {formatEur(invoice.bracketFee)}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">
+                      Average Balance
+                    </span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {formatUsd(invoice.avgBalance)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-slate-400">
+                      Maintenance Fee
+                    </span>
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {invoice.feePercent}%
+                    </span>
+                  </div>
+                </>
+              )}
+
               <div className="flex items-center justify-between py-2">
                 <span className="text-sm text-slate-400">Days Active</span>
                 <span className="text-sm font-mono font-medium text-foreground">
@@ -172,16 +276,14 @@ export default function InvoicePaymentPage({
                 </span>
               </div>
 
-              {/* Divider */}
               <div className="border-t border-white/[0.06]" />
 
-              {/* Amount Due */}
               <div className="flex items-center justify-between py-2">
                 <span className="text-sm font-semibold text-slate-300">
                   Amount Due
                 </span>
                 <span className="text-2xl font-bold font-mono text-violet-400">
-                  {formatUsd(invoice.invoiceAmount)}
+                  {formatEur(invoice.invoiceAmount)}
                 </span>
               </div>
             </div>
@@ -220,7 +322,6 @@ export default function InvoicePaymentPage({
             {/* Unpaid State */}
             {!isPaid && (
               <div className="space-y-3">
-                {/* Error display */}
                 {paymentError && (
                   <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -228,7 +329,6 @@ export default function InvoicePaymentPage({
                   </div>
                 )}
 
-                {/* Pay with ByBit button */}
                 <Button
                   onClick={() => payMutation.mutate("bybit_transfer")}
                   disabled={payMutation.isPending}
@@ -240,11 +340,10 @@ export default function InvoicePaymentPage({
                       Processing...
                     </span>
                   ) : (
-                    `Pay ${formatUsd(invoice.invoiceAmount)} with ByBit`
+                    `Pay ${formatEur(invoice.invoiceAmount)} with ByBit`
                   )}
                 </Button>
 
-                {/* Manual payment button */}
                 <Button
                   variant="outline"
                   onClick={() => payMutation.mutate("manual")}

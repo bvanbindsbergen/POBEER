@@ -3,10 +3,12 @@ import {
   users,
   followerTrades,
   positions,
+  pendingTrades,
+  symbolRules,
   type LeaderTrade,
   type User,
 } from "../lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { decrypt } from "../lib/crypto";
 import {
   createExchange,
@@ -15,6 +17,7 @@ import {
 } from "../lib/exchange/client";
 import { PositionTracker } from "./position-tracker";
 import { FeeCalculator } from "./fee-calculator";
+import { createNotification } from "../lib/notifications";
 import * as ccxt from "ccxt";
 
 const MAX_RETRIES = 3;
@@ -93,6 +96,176 @@ export class TradeCopier {
     let exchange: ccxt.bybit | null = null;
 
     try {
+      // Risk control: check allowed markets
+      if (follower.allowedMarkets) {
+        try {
+          const allowed: string[] = JSON.parse(follower.allowedMarkets);
+          if (allowed.length > 0 && !allowed.includes(leaderTrade.symbol)) {
+            await this.insertFollowerTrade(
+              leaderTrade.id,
+              follower.id,
+              leaderTrade.symbol,
+              "buy",
+              "skipped",
+              ratio,
+              null,
+              null,
+              `Market ${leaderTrade.symbol} not in allowed list`
+            );
+            console.log(
+              `[TradeCopier] Skipped ${follower.name}: ${leaderTrade.symbol} not in allowed markets`
+            );
+            return;
+          }
+        } catch {
+          // Invalid JSON, skip check
+        }
+      }
+
+      // Risk control: check daily loss cap
+      if (follower.dailyLossCapUsd) {
+        const cap = Number(follower.dailyLossCapUsd);
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const [dailyLoss] = await db
+          .select({
+            totalLoss: sql<string>`coalesce(sum(
+              case when ${positions.realizedPnl}::numeric < 0
+                then ${positions.realizedPnl}::numeric
+                else 0
+              end
+            ), 0)`,
+          })
+          .from(positions)
+          .where(
+            and(
+              eq(positions.userId, follower.id),
+              eq(positions.status, "closed"),
+              gte(positions.closedAt, todayStart)
+            )
+          );
+
+        const loss = Math.abs(Number(dailyLoss?.totalLoss) || 0);
+        if (loss >= cap) {
+          await this.insertFollowerTrade(
+            leaderTrade.id,
+            follower.id,
+            leaderTrade.symbol,
+            "buy",
+            "skipped",
+            ratio,
+            null,
+            null,
+            `Daily loss cap reached ($${loss.toFixed(2)} >= $${cap.toFixed(2)})`
+          );
+          console.log(
+            `[TradeCopier] Skipped ${follower.name}: daily loss cap reached`
+          );
+          return;
+        }
+      }
+
+      // Per-symbol rule check
+      const [symbolRule] = await db
+        .select()
+        .from(symbolRules)
+        .where(
+          and(
+            eq(symbolRules.userId, follower.id),
+            eq(symbolRules.symbol, leaderTrade.symbol)
+          )
+        )
+        .limit(1);
+
+      if (symbolRule) {
+        if (symbolRule.action === "skip") {
+          await this.insertFollowerTrade(
+            leaderTrade.id,
+            follower.id,
+            leaderTrade.symbol,
+            "buy",
+            "skipped",
+            ratio,
+            null,
+            null,
+            `Symbol ${leaderTrade.symbol} set to skip`
+          );
+          console.log(
+            `[TradeCopier] Skipped ${follower.name}: ${leaderTrade.symbol} rule = skip`
+          );
+          return;
+        }
+        if (symbolRule.action === "manual") {
+          // Force manual mode for this symbol
+          const approvalWindow = follower.approvalWindowMinutes ?? 5;
+          const expiresAt = new Date(Date.now() + approvalWindow * 60 * 1000);
+          const estQty = 100 / fillPrice;
+
+          await db.insert(pendingTrades).values({
+            leaderTradeId: leaderTrade.id,
+            followerId: follower.id,
+            symbol: leaderTrade.symbol,
+            side: "buy",
+            suggestedQuantity: String(estQty),
+            suggestedUsdValue: String(100),
+            leaderFillPrice: String(fillPrice),
+            status: "pending",
+            expiresAt,
+          });
+
+          await createNotification(
+            follower.id,
+            "trade_pending",
+            `Pending: BUY ${leaderTrade.symbol}`,
+            `Symbol rule: manual approval required for ${leaderTrade.symbol}.`,
+            { symbol: leaderTrade.symbol, side: "buy", fillPrice }
+          );
+
+          console.log(
+            `[TradeCopier] ${follower.name}: Symbol rule manual — queued ${leaderTrade.symbol}`
+          );
+          return;
+        }
+        // action === "copy" with possible custom ratio/maxUsd — will be applied below
+      }
+
+      // Manual approval mode check
+      if (follower.followMode === "manual") {
+        // Estimate trade size for display purposes
+        const approvalWindow = follower.approvalWindowMinutes ?? 5;
+        const expiresAt = new Date(Date.now() + approvalWindow * 60 * 1000);
+
+        // Rough estimate: we'll store the suggested quantity and let the user decide
+        const estimatedUsdt = fillPrice > 0 ? 100 : 0; // placeholder
+        const estimatedQty = estimatedUsdt / fillPrice;
+
+        await db.insert(pendingTrades).values({
+          leaderTradeId: leaderTrade.id,
+          followerId: follower.id,
+          symbol: leaderTrade.symbol,
+          side: "buy",
+          suggestedQuantity: String(estimatedQty),
+          suggestedUsdValue: String(estimatedUsdt),
+          leaderFillPrice: String(fillPrice),
+          status: "pending",
+          expiresAt,
+        });
+
+        await createNotification(
+          follower.id,
+          "trade_pending",
+          `Pending: BUY ${leaderTrade.symbol}`,
+          `Leader bought ${leaderTrade.symbol} @ $${fillPrice.toFixed(2)}. Approve within ${approvalWindow} minutes.`,
+          { symbol: leaderTrade.symbol, side: "buy", fillPrice, expiresAt: expiresAt.toISOString() }
+        );
+
+        console.log(
+          `[TradeCopier] ${follower.name}: Manual mode — queued pending BUY ${leaderTrade.symbol}`
+        );
+        return;
+      }
+
       // Decrypt API keys
       const apiKey = decrypt(follower.apiKeyEncrypted!);
       const apiSecret = decrypt(follower.apiSecretEncrypted!);
@@ -102,9 +275,15 @@ export class TradeCopier {
       const balance = await fetchUsdtBalance(exchange);
       const availableUsdt = balance.free;
 
-      // Calculate order size
-      let tradeUsdt = availableUsdt * (ratio / 100);
-      tradeUsdt = Math.min(tradeUsdt, maxTradeUsd);
+      // Calculate order size (apply symbol-specific overrides if present)
+      const effectiveRatio = symbolRule?.customRatio
+        ? Number(symbolRule.customRatio)
+        : ratio;
+      const effectiveMaxUsd = symbolRule?.customMaxUsd
+        ? Number(symbolRule.customMaxUsd)
+        : maxTradeUsd;
+      let tradeUsdt = availableUsdt * (effectiveRatio / 100);
+      tradeUsdt = Math.min(tradeUsdt, effectiveMaxUsd);
 
       if (tradeUsdt < 1) {
         // Minimum viable trade
@@ -153,6 +332,14 @@ export class TradeCopier {
         leaderTrade.positionGroupId || undefined
       );
 
+      await createNotification(
+        follower.id,
+        "trade_copied",
+        `BUY ${leaderTrade.symbol}`,
+        `Copied trade: ${quantity.toFixed(6)} ${leaderTrade.symbol} @ $${(result.average ?? fillPrice).toFixed(2)}`,
+        { symbol: leaderTrade.symbol, side: "buy", quantity, price: result.average ?? fillPrice }
+      );
+
       console.log(
         `[TradeCopier] ${follower.name}: BUY ${quantity.toFixed(6)} ${leaderTrade.symbol} @ ${(result.average ?? fillPrice).toFixed(2)}`
       );
@@ -174,6 +361,14 @@ export class TradeCopier {
         null,
         null,
         errorMsg
+      );
+
+      await createNotification(
+        follower.id,
+        "trade_failed",
+        `Failed: BUY ${leaderTrade.symbol}`,
+        `Trade copy failed: ${errorMsg}`,
+        { symbol: leaderTrade.symbol, side: "buy", error: errorMsg }
       );
 
       // Disable copying if auth error
@@ -205,6 +400,57 @@ export class TradeCopier {
     let exchange: ccxt.bybit | null = null;
 
     try {
+      // Manual approval mode check for sells
+      if (follower.followMode === "manual") {
+        const openPosition = await db
+          .select()
+          .from(positions)
+          .where(
+            and(
+              eq(positions.userId, follower.id),
+              eq(positions.symbol, leaderTrade.symbol),
+              eq(positions.status, "open")
+            )
+          )
+          .limit(1);
+
+        if (openPosition.length === 0) {
+          console.log(
+            `[TradeCopier] No open position for ${follower.name} on ${leaderTrade.symbol}, skipping manual sell`
+          );
+          return;
+        }
+
+        const approvalWindow = follower.approvalWindowMinutes ?? 5;
+        const expiresAt = new Date(Date.now() + approvalWindow * 60 * 1000);
+        const sellQty = Number(openPosition[0].entryQuantity);
+
+        await db.insert(pendingTrades).values({
+          leaderTradeId: leaderTrade.id,
+          followerId: follower.id,
+          symbol: leaderTrade.symbol,
+          side: "sell",
+          suggestedQuantity: String(sellQty),
+          suggestedUsdValue: String(sellQty * fillPrice),
+          leaderFillPrice: String(fillPrice),
+          status: "pending",
+          expiresAt,
+        });
+
+        await createNotification(
+          follower.id,
+          "trade_pending",
+          `Pending: SELL ${leaderTrade.symbol}`,
+          `Leader sold ${leaderTrade.symbol} @ $${fillPrice.toFixed(2)}. Approve within ${approvalWindow} minutes.`,
+          { symbol: leaderTrade.symbol, side: "sell", fillPrice, expiresAt: expiresAt.toISOString() }
+        );
+
+        console.log(
+          `[TradeCopier] ${follower.name}: Manual mode — queued pending SELL ${leaderTrade.symbol}`
+        );
+        return;
+      }
+
       // Find open position for this follower + symbol
       const openPosition = await db
         .select()
@@ -273,6 +519,14 @@ export class TradeCopier {
         );
       }
 
+      await createNotification(
+        follower.id,
+        "trade_copied",
+        `SELL ${leaderTrade.symbol}`,
+        `Position closed: ${sellQuantity.toFixed(6)} ${leaderTrade.symbol} @ $${exitPrice.toFixed(2)} | PnL: ${pnl != null ? `$${pnl.toFixed(2)}` : "N/A"}`,
+        { symbol: leaderTrade.symbol, side: "sell", quantity: sellQuantity, price: exitPrice, pnl }
+      );
+
       console.log(
         `[TradeCopier] ${follower.name}: SELL ${sellQuantity.toFixed(6)} ${leaderTrade.symbol} @ ${exitPrice.toFixed(2)} | PnL: ${pnl?.toFixed(2) || "N/A"}`
       );
@@ -290,6 +544,14 @@ export class TradeCopier {
         null,
         null,
         errorMsg
+      );
+
+      await createNotification(
+        follower.id,
+        "trade_failed",
+        `Failed: SELL ${leaderTrade.symbol}`,
+        `Trade close failed: ${errorMsg}`,
+        { symbol: leaderTrade.symbol, side: "sell", error: errorMsg }
       );
     } finally {
       if (exchange) {

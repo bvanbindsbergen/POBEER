@@ -11,11 +11,15 @@ import {
   Shield,
   LogOut,
   Beer,
+  Rocket,
+  Wallet,
 } from "lucide-react";
+import { NotificationBell } from "@/components/notification-bell";
 
 const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
+  { href: "/funds", label: "Funds", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -60,7 +64,17 @@ export default function DashboardLayout({
     );
   }
 
-  const allNavItems = isLeader ? [...navItems, adminNavItem] : navItems;
+  const showOnboarding = !isLeader && !user?.hasApiKeys;
+  const onboardingNavItem = {
+    href: "/onboarding",
+    label: "Setup",
+    icon: Rocket,
+  };
+  const allNavItems = isLeader
+    ? [...navItems, adminNavItem]
+    : showOnboarding
+      ? [onboardingNavItem, ...navItems]
+      : navItems;
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -73,11 +87,14 @@ export default function DashboardLayout({
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#070b12] border-r border-white/[0.06]">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-6 h-16 border-b border-white/[0.06]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center flex-shrink-0">
-            <Beer className="w-4 h-4 text-[#022c22]" />
+        <div className="flex items-center justify-between px-6 h-16 border-b border-white/[0.06]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center flex-shrink-0">
+              <Beer className="w-4 h-4 text-[#022c22]" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">POBEER</span>
           </div>
-          <span className="text-lg font-bold tracking-tight">POBEER</span>
+          <NotificationBell />
         </div>
 
         {/* Nav */}
@@ -145,12 +162,15 @@ export default function DashboardLayout({
             </div>
             <span className="text-base font-bold">POBEER</span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-2 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <div className="p-4 md:p-8 max-w-7xl mx-auto">{children}</div>

@@ -35,6 +35,22 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "paid",
   "overdue",
 ]);
+export const transferTypeEnum = pgEnum("transfer_type", [
+  "deposit",
+  "withdrawal",
+]);
+export const followModeEnum = pgEnum("follow_mode", ["auto", "manual"]);
+export const pendingTradeStatusEnum = pgEnum("pending_trade_status", [
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+]);
+export const symbolRuleActionEnum = pgEnum("symbol_rule_action", [
+  "copy",
+  "skip",
+  "manual",
+]);
 
 // Users
 export const users = pgTable("users", {
@@ -53,6 +69,13 @@ export const users = pgTable("users", {
   }).default("10"),
   maxTradeUsd: numeric("max_trade_usd", { precision: 12, scale: 2 }),
   copyingEnabled: boolean("copying_enabled").default(false),
+  // Risk controls (Phase 4)
+  dailyLossCapUsd: numeric("daily_loss_cap_usd", { precision: 12, scale: 2 }),
+  leverageCap: numeric("leverage_cap", { precision: 5, scale: 2 }),
+  allowedMarkets: text("allowed_markets"), // JSON string array e.g. '["BTC/USDT","ETH/USDT"]'
+  // Manual approval mode (Phase 7)
+  followMode: followModeEnum("follow_mode").default("auto"),
+  approvalWindowMinutes: integer("approval_window_minutes").default(5),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -176,10 +199,95 @@ export const invoices = pgTable("invoices", {
   invoiceAmount: numeric("invoice_amount", { precision: 20, scale: 8 }).notNull(),
   daysInQuarter: integer("days_in_quarter").notNull(),
   daysActive: integer("days_active").notNull(),
+  // Tiered fee breakdown (Phase 2)
+  baseFee: numeric("base_fee", { precision: 12, scale: 2 }),
+  bracketFee: numeric("bracket_fee", { precision: 12, scale: 2 }),
+  bracketLabel: varchar("bracket_label", { length: 50 }),
+  startEquity: numeric("start_equity", { precision: 20, scale: 8 }),
+  endEquity: numeric("end_equity", { precision: 20, scale: 8 }),
+  netDeposits: numeric("net_deposits", { precision: 20, scale: 8 }),
+  netWithdrawals: numeric("net_withdrawals", { precision: 20, scale: 8 }),
+  quarterProfit: numeric("quarter_profit", { precision: 20, scale: 8 }),
   status: invoiceStatusEnum("status").notNull().default("pending"),
   paidAt: timestamp("paid_at"),
   paidVia: varchar("paid_via", { length: 20 }),
   paymentToken: varchar("payment_token", { length: 255 }).notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Transfer history (deposits/withdrawals from ByBit)
+export const transferHistory = pgTable("transfer_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  transferType: transferTypeEnum("transfer_type").notNull(),
+  amount: numeric("amount", { precision: 20, scale: 8 }).notNull(),
+  coin: varchar("coin", { length: 20 }).notNull().default("USDT"),
+  bybitTxId: varchar("bybit_tx_id", { length: 255 }).unique(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Quarter equity snapshots (start/end equity per follower per quarter)
+export const quarterEquitySnapshots = pgTable("quarter_equity_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  quarterLabel: varchar("quarter_label", { length: 10 }).notNull(), // "2026-Q1"
+  startEquity: numeric("start_equity", { precision: 20, scale: 8 }),
+  endEquity: numeric("end_equity", { precision: 20, scale: 8 }),
+  netDeposits: numeric("net_deposits", { precision: 20, scale: 8 }).default("0"),
+  netWithdrawals: numeric("net_withdrawals", { precision: 20, scale: 8 }).default("0"),
+  profit: numeric("profit", { precision: 20, scale: 8 }),
+  bracketLabel: varchar("bracket_label", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Notifications (Phase 6)
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  type: varchar("type", { length: 50 }).notNull(), // "trade_copied", "trade_failed", "invoice_created", etc.
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  metadata: text("metadata"), // JSON string
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Pending trades for manual approval mode (Phase 7)
+export const pendingTrades = pgTable("pending_trades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  leaderTradeId: uuid("leader_trade_id")
+    .notNull()
+    .references(() => leaderTrades.id),
+  followerId: uuid("follower_id")
+    .notNull()
+    .references(() => users.id),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  side: orderSideEnum("side").notNull(),
+  suggestedQuantity: numeric("suggested_quantity", { precision: 20, scale: 8 }).notNull(),
+  suggestedUsdValue: numeric("suggested_usd_value", { precision: 20, scale: 8 }),
+  leaderFillPrice: numeric("leader_fill_price", { precision: 20, scale: 8 }),
+  status: pendingTradeStatusEnum("status").notNull().default("pending"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Per-symbol rules (Phase 8)
+export const symbolRules = pgTable("symbol_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  action: symbolRuleActionEnum("action").notNull().default("copy"),
+  customRatio: numeric("custom_ratio", { precision: 5, scale: 2 }),
+  customMaxUsd: numeric("custom_max_usd", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -193,3 +301,8 @@ export type Fee = typeof fees.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type BalanceSnapshot = typeof balanceSnapshots.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
+export type TransferHistoryRecord = typeof transferHistory.$inferSelect;
+export type QuarterEquitySnapshot = typeof quarterEquitySnapshots.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;
+export type PendingTrade = typeof pendingTrades.$inferSelect;
+export type SymbolRule = typeof symbolRules.$inferSelect;

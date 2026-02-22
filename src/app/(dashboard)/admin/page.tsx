@@ -74,6 +74,10 @@ interface InvoiceRecord {
   invoiceAmount: string;
   daysActive: number;
   daysInQuarter: number;
+  baseFee: string | null;
+  bracketFee: string | null;
+  bracketLabel: string | null;
+  quarterProfit: string | null;
   status: string;
   paidAt: string | null;
   paidVia: string | null;
@@ -471,10 +475,13 @@ export default function AdminPage() {
                       Quarter
                     </TableHead>
                     <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-right">
-                      Avg Balance
+                      Profit
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-center">
+                      Bracket
                     </TableHead>
                     <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-right">
-                      Fee Amount
+                      Fee
                     </TableHead>
                     <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-center">
                       Days
@@ -507,7 +514,32 @@ export default function AdminPage() {
                         {invoice.quarterLabel}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
-                        {formatUsd(invoice.avgBalance)}
+                        {invoice.quarterProfit != null ? (
+                          <span
+                            className={
+                              Number(invoice.quarterProfit) >= 0
+                                ? "text-emerald-400"
+                                : "text-red-400"
+                            }
+                          >
+                            {Number(invoice.quarterProfit) >= 0 ? "+" : ""}
+                            {formatUsd(invoice.quarterProfit)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {invoice.bracketLabel ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-mono border-violet-500/30 text-violet-400"
+                          >
+                            {invoice.bracketLabel}
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-violet-400">
                         {formatUsd(invoice.invoiceAmount)}

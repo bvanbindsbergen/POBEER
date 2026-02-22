@@ -7,7 +7,17 @@ import { eq } from "drizzle-orm";
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth();
-    const { copyRatioPercent, maxTradeUsd, copyingEnabled } = await req.json();
+    const body = await req.json();
+    const {
+      copyRatioPercent,
+      maxTradeUsd,
+      copyingEnabled,
+      dailyLossCapUsd,
+      leverageCap,
+      allowedMarkets,
+      followMode,
+      approvalWindowMinutes,
+    } = body;
 
     // Validate
     if (
@@ -28,6 +38,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (
+      dailyLossCapUsd !== undefined &&
+      dailyLossCapUsd !== null &&
+      Number(dailyLossCapUsd) < 0
+    ) {
+      return NextResponse.json(
+        { error: "Daily loss cap must be positive" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      leverageCap !== undefined &&
+      leverageCap !== null &&
+      (Number(leverageCap) < 1 || Number(leverageCap) > 100)
+    ) {
+      return NextResponse.json(
+        { error: "Leverage cap must be between 1 and 100" },
+        { status: 400 }
+      );
+    }
+
+    if (allowedMarkets !== undefined && allowedMarkets !== null) {
+      if (!Array.isArray(allowedMarkets)) {
+        return NextResponse.json(
+          { error: "Allowed markets must be an array" },
+          { status: 400 }
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
 
     if (copyRatioPercent !== undefined) {
@@ -38,6 +79,38 @@ export async function POST(req: NextRequest) {
     }
     if (copyingEnabled !== undefined) {
       updates.copyingEnabled = copyingEnabled;
+    }
+    if (dailyLossCapUsd !== undefined) {
+      updates.dailyLossCapUsd = dailyLossCapUsd
+        ? String(dailyLossCapUsd)
+        : null;
+    }
+    if (leverageCap !== undefined) {
+      updates.leverageCap = leverageCap ? String(leverageCap) : null;
+    }
+    if (allowedMarkets !== undefined) {
+      updates.allowedMarkets = allowedMarkets
+        ? JSON.stringify(allowedMarkets)
+        : null;
+    }
+    if (followMode !== undefined) {
+      if (!["auto", "manual"].includes(followMode)) {
+        return NextResponse.json(
+          { error: "Follow mode must be 'auto' or 'manual'" },
+          { status: 400 }
+        );
+      }
+      updates.followMode = followMode;
+    }
+    if (approvalWindowMinutes !== undefined) {
+      const mins = Number(approvalWindowMinutes);
+      if (mins < 1 || mins > 60) {
+        return NextResponse.json(
+          { error: "Approval window must be between 1 and 60 minutes" },
+          { status: 400 }
+        );
+      }
+      updates.approvalWindowMinutes = mins;
     }
 
     await db.update(users).set(updates).where(eq(users.id, auth.user.id));

@@ -9,6 +9,8 @@ import { FeeCalculator } from "./fee-calculator";
 import { Reconciler } from "./reconciler";
 import { BalanceSnapshotJob } from "./balance-snapshot";
 import { InvoiceGenerator } from "./invoice-generator";
+import { TransferTracker } from "./transfer-tracker";
+import { PendingTradeExpirer } from "./pending-trade-expirer";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
 const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
@@ -21,8 +23,11 @@ class Worker {
   private reconciler: Reconciler;
   private balanceSnapshotJob: BalanceSnapshotJob;
   private invoiceGenerator: InvoiceGenerator;
+  private transferTracker: TransferTracker;
+  private pendingTradeExpirer: PendingTradeExpirer;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
+  private expirerTimer: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor() {
@@ -39,6 +44,8 @@ class Worker {
     );
     this.balanceSnapshotJob = new BalanceSnapshotJob();
     this.invoiceGenerator = new InvoiceGenerator();
+    this.transferTracker = new TransferTracker();
+    this.pendingTradeExpirer = new PendingTradeExpirer();
   }
 
   async start() {
@@ -79,6 +86,7 @@ class Worker {
     this.running = true;
     this.startHeartbeat();
     this.startScheduler();
+    this.startPendingTradeExpirer();
 
     console.log("[Worker] Starting leader order watcher...");
     await this.leaderWatcher.start();
@@ -118,6 +126,15 @@ class Worker {
       }
 
       try {
+        if (await this.transferTracker.shouldRun()) {
+          console.log("[Worker] Running daily transfer tracking...");
+          await this.transferTracker.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Transfer tracker job error:", err);
+      }
+
+      try {
         if (await this.invoiceGenerator.shouldRun()) {
           console.log("[Worker] Running quarterly invoice generation...");
           await this.invoiceGenerator.run();
@@ -132,6 +149,16 @@ class Worker {
     this.schedulerTimer = setInterval(runScheduledJobs, SCHEDULER_INTERVAL);
   }
 
+  private startPendingTradeExpirer() {
+    this.expirerTimer = setInterval(async () => {
+      try {
+        await this.pendingTradeExpirer.run();
+      } catch (err) {
+        console.error("[Worker] Pending trade expirer error:", err);
+      }
+    }, 30_000); // every 30 seconds
+  }
+
   async shutdown() {
     console.log("[Worker] Shutting down...");
     this.running = false;
@@ -142,6 +169,10 @@ class Worker {
 
     if (this.schedulerTimer) {
       clearInterval(this.schedulerTimer);
+    }
+
+    if (this.expirerTimer) {
+      clearInterval(this.expirerTimer);
     }
 
     if (this.leaderWatcher) {

@@ -67,6 +67,47 @@ export async function fetchUsdtBalance(
   };
 }
 
+export interface TransferRecord {
+  id: string;
+  txid: string;
+  amount: number;
+  currency: string;
+  timestamp: number;
+  datetime: string;
+}
+
+export async function fetchDeposits(
+  exchange: InstanceType<typeof ccxt.bybit>,
+  since?: number,
+  limit = 50
+): Promise<TransferRecord[]> {
+  const deposits = await exchange.fetchDeposits("USDT", since, limit);
+  return deposits.map((d) => ({
+    id: String(d.id),
+    txid: String(d.txid || d.id),
+    amount: Number(d.amount) || 0,
+    currency: String(d.currency || "USDT"),
+    timestamp: d.timestamp || Date.now(),
+    datetime: String(d.datetime || new Date().toISOString()),
+  }));
+}
+
+export async function fetchWithdrawals(
+  exchange: InstanceType<typeof ccxt.bybit>,
+  since?: number,
+  limit = 50
+): Promise<TransferRecord[]> {
+  const withdrawals = await exchange.fetchWithdrawals("USDT", since, limit);
+  return withdrawals.map((w) => ({
+    id: String(w.id),
+    txid: String(w.txid || w.id),
+    amount: Number(w.amount) || 0,
+    currency: String(w.currency || "USDT"),
+    timestamp: w.timestamp || Date.now(),
+    datetime: String(w.datetime || new Date().toISOString()),
+  }));
+}
+
 export async function placeMarketOrder(
   exchange: InstanceType<typeof ccxt.bybit>,
   symbol: string,

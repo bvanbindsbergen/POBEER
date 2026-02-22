@@ -19,6 +19,11 @@ export async function GET() {
         maxTradeUsd: user.maxTradeUsd,
         copyingEnabled: user.copyingEnabled,
         hasApiKeys: !!(user.apiKeyEncrypted && user.apiSecretEncrypted),
+        dailyLossCapUsd: user.dailyLossCapUsd,
+        leverageCap: user.leverageCap,
+        allowedMarkets: user.allowedMarkets,
+        followMode: user.followMode,
+        approvalWindowMinutes: user.approvalWindowMinutes,
       },
     });
   } catch (error) {
