@@ -29,6 +29,12 @@ export const positionStatusEnum = pgEnum("position_status", [
 ]);
 export const feeStatusEnum = pgEnum("fee_status", ["calculated", "settled"]);
 export const orderSideEnum = pgEnum("order_side", ["buy", "sell"]);
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "pending",
+  "emailed",
+  "paid",
+  "overdue",
+]);
 
 // Users
 export const users = pgTable("users", {
@@ -145,6 +151,38 @@ export const systemConfig = pgTable("system_config", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Balance snapshots (daily ByBit balance fetch)
+export const balanceSnapshots = pgTable("balance_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  balanceUsdt: numeric("balance_usdt", { precision: 20, scale: 8 }).notNull(),
+  snapshotDate: varchar("snapshot_date", { length: 10 }).notNull(), // "YYYY-MM-DD"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Quarterly invoices
+export const invoices = pgTable("invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  followerId: uuid("follower_id")
+    .notNull()
+    .references(() => users.id),
+  quarterLabel: varchar("quarter_label", { length: 10 }).notNull(), // "2026-Q1"
+  periodStart: varchar("period_start", { length: 10 }).notNull(), // "YYYY-MM-DD"
+  periodEnd: varchar("period_end", { length: 10 }).notNull(),
+  avgBalance: numeric("avg_balance", { precision: 20, scale: 8 }).notNull(),
+  feePercent: numeric("fee_percent", { precision: 5, scale: 2 }).notNull().default("2"),
+  invoiceAmount: numeric("invoice_amount", { precision: 20, scale: 8 }).notNull(),
+  daysInQuarter: integer("days_in_quarter").notNull(),
+  daysActive: integer("days_active").notNull(),
+  status: invoiceStatusEnum("status").notNull().default("pending"),
+  paidAt: timestamp("paid_at"),
+  paidVia: varchar("paid_via", { length: 20 }),
+  paymentToken: varchar("payment_token", { length: 255 }).notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -153,3 +191,5 @@ export type FollowerTrade = typeof followerTrades.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type Fee = typeof fees.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type BalanceSnapshot = typeof balanceSnapshots.$inferSelect;
+export type Invoice = typeof invoices.$inferSelect;

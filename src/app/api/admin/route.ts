@@ -7,6 +7,8 @@ import {
   positions,
   fees,
   systemConfig,
+  invoices,
+  balanceSnapshots,
 } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -43,6 +45,14 @@ export async function GET() {
             )
           );
 
+        // Latest balance snapshot
+        const [latestBalance] = await db
+          .select({ balanceUsdt: balanceSnapshots.balanceUsdt })
+          .from(balanceSnapshots)
+          .where(eq(balanceSnapshots.userId, follower.id))
+          .orderBy(desc(balanceSnapshots.snapshotDate))
+          .limit(1);
+
         return {
           id: follower.id,
           name: follower.name,
@@ -55,6 +65,9 @@ export async function GET() {
           totalTrades: Number(tradesResult[0]?.total) || 0,
           successfulTrades: Number(tradesResult[0]?.successful) || 0,
           totalPnl: Number(pnlResult[0]?.totalPnl) || 0,
+          currentBalance: latestBalance
+            ? Number(latestBalance.balanceUsdt)
+            : null,
         };
       })
     );
@@ -99,12 +112,41 @@ export async function GET() {
       .where(eq(systemConfig.key, "worker_heartbeat"))
       .limit(1);
 
+    // Invoice records
+    const invoiceRecords = await db
+      .select({
+        id: invoices.id,
+        followerId: invoices.followerId,
+        quarterLabel: invoices.quarterLabel,
+        avgBalance: invoices.avgBalance,
+        invoiceAmount: invoices.invoiceAmount,
+        daysActive: invoices.daysActive,
+        daysInQuarter: invoices.daysInQuarter,
+        status: invoices.status,
+        paidAt: invoices.paidAt,
+        paidVia: invoices.paidVia,
+        createdAt: invoices.createdAt,
+      })
+      .from(invoices)
+      .orderBy(desc(invoices.createdAt))
+      .limit(100);
+
+    const enrichedInvoices = invoiceRecords.map((inv) => {
+      const follower = allFollowers.find((f) => f.id === inv.followerId);
+      return {
+        ...inv,
+        followerName: follower?.name || "Unknown",
+        followerEmail: follower?.email || "",
+      };
+    });
+
     return NextResponse.json({
       followers: enrichedFollowers,
       fees: enrichedFees,
       workerHealth: heartbeat
         ? { lastHeartbeat: heartbeat.value }
         : null,
+      invoices: enrichedInvoices,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

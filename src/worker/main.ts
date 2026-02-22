@@ -7,8 +7,11 @@ import { TradeCopier } from "./trade-copier";
 import { PositionTracker } from "./position-tracker";
 import { FeeCalculator } from "./fee-calculator";
 import { Reconciler } from "./reconciler";
+import { BalanceSnapshotJob } from "./balance-snapshot";
+import { InvoiceGenerator } from "./invoice-generator";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
+const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
 
 class Worker {
   private leaderWatcher: LeaderWatcher | null = null;
@@ -16,7 +19,10 @@ class Worker {
   private positionTracker: PositionTracker;
   private feeCalculator: FeeCalculator;
   private reconciler: Reconciler;
+  private balanceSnapshotJob: BalanceSnapshotJob;
+  private invoiceGenerator: InvoiceGenerator;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private schedulerTimer: NodeJS.Timeout | null = null;
   private running = false;
 
   constructor() {
@@ -31,6 +37,8 @@ class Worker {
       this.tradeCopier,
       this.feeCalculator
     );
+    this.balanceSnapshotJob = new BalanceSnapshotJob();
+    this.invoiceGenerator = new InvoiceGenerator();
   }
 
   async start() {
@@ -70,6 +78,7 @@ class Worker {
 
     this.running = true;
     this.startHeartbeat();
+    this.startScheduler();
 
     console.log("[Worker] Starting leader order watcher...");
     await this.leaderWatcher.start();
@@ -97,12 +106,42 @@ class Worker {
     }, HEARTBEAT_INTERVAL);
   }
 
+  private startScheduler() {
+    const runScheduledJobs = async () => {
+      try {
+        if (await this.balanceSnapshotJob.shouldRun()) {
+          console.log("[Worker] Running daily balance snapshot...");
+          await this.balanceSnapshotJob.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Balance snapshot job error:", err);
+      }
+
+      try {
+        if (await this.invoiceGenerator.shouldRun()) {
+          console.log("[Worker] Running quarterly invoice generation...");
+          await this.invoiceGenerator.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Invoice generation job error:", err);
+      }
+    };
+
+    // Run immediately on start, then every 5 minutes
+    runScheduledJobs();
+    this.schedulerTimer = setInterval(runScheduledJobs, SCHEDULER_INTERVAL);
+  }
+
   async shutdown() {
     console.log("[Worker] Shutting down...");
     this.running = false;
 
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
+    }
+
+    if (this.schedulerTimer) {
+      clearInterval(this.schedulerTimer);
     }
 
     if (this.leaderWatcher) {

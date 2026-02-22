@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import {
   Shield,
   Users,
@@ -18,6 +19,8 @@ import {
   Activity,
   Wifi,
   WifiOff,
+  Receipt,
+  FileText,
 } from "lucide-react";
 
 function formatUsd(value: number | string | null | undefined) {
@@ -49,6 +52,7 @@ interface Follower {
   totalTrades: number;
   successfulTrades: number;
   totalPnl: number;
+  currentBalance: number | null;
 }
 
 interface FeeRecord {
@@ -58,6 +62,21 @@ interface FeeRecord {
   profitAmount: string;
   feeAmount: string;
   status: string;
+  createdAt: string;
+}
+
+interface InvoiceRecord {
+  id: string;
+  followerName: string;
+  followerEmail: string;
+  quarterLabel: string;
+  avgBalance: string;
+  invoiceAmount: string;
+  daysActive: number;
+  daysInQuarter: number;
+  status: string;
+  paidAt: string | null;
+  paidVia: string | null;
   createdAt: string;
 }
 
@@ -85,6 +104,7 @@ export default function AdminPage() {
   const followers: Follower[] = adminData?.followers || [];
   const feeRecords: FeeRecord[] = adminData?.fees || [];
   const workerHealth = adminData?.workerHealth;
+  const invoiceRecords: InvoiceRecord[] = adminData?.invoices || [];
 
   if (user?.role !== "leader") {
     return (
@@ -108,6 +128,34 @@ export default function AdminPage() {
     (sum: number, f: FeeRecord) => sum + Number(f.feeAmount),
     0
   );
+
+  const totalInvoiced = invoiceRecords.reduce(
+    (sum: number, i: InvoiceRecord) => sum + Number(i.invoiceAmount), 0
+  );
+  const totalPaid = invoiceRecords
+    .filter((i) => i.status === "paid")
+    .reduce((sum: number, i: InvoiceRecord) => sum + Number(i.invoiceAmount), 0);
+  const totalOutstanding = totalInvoiced - totalPaid;
+
+  async function handleGenerateInvoices() {
+    try {
+      await fetch("/api/admin/invoices/generate", { method: "POST" });
+    } catch (err) {
+      console.error("Generate invoices error:", err);
+    }
+  }
+
+  async function handleMarkPaid(invoiceId: string) {
+    try {
+      await fetch(`/api/admin/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paid" }),
+      });
+    } catch (err) {
+      console.error("Mark paid error:", err);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -230,7 +278,7 @@ export default function AdminPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-3 gap-2 text-xs">
                     <div>
                       <span className="text-slate-500">Ratio</span>
                       <p className="font-mono font-medium">
@@ -247,6 +295,14 @@ export default function AdminPage() {
                         }
                       >
                         {follower.hasApiKeys ? "Set" : "Missing"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Balance</span>
+                      <p className="font-mono">
+                        {follower.currentBalance !== null
+                          ? formatUsd(follower.currentBalance)
+                          : "—"}
                       </p>
                     </div>
                     <div>
@@ -346,6 +402,150 @@ export default function AdminPage() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-400 font-mono">
                         {new Date(fee.createdAt).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quarterly Invoices */}
+      <Card className="bg-[#111827] border-white/[0.06]">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-violet-400" />
+              Quarterly Invoices
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-white/[0.06] hover:bg-white/[0.02] text-xs"
+              onClick={handleGenerateInvoices}
+            >
+              <FileText className="w-3.5 h-3.5 mr-1.5" />
+              Generate Invoices
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Invoice Summary Stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
+              <span className="text-xs text-slate-500">Total Invoiced</span>
+              <p className="text-lg font-bold font-mono text-violet-400">
+                {formatUsd(totalInvoiced)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
+              <span className="text-xs text-slate-500">Total Paid</span>
+              <p className="text-lg font-bold font-mono text-emerald-400">
+                {formatUsd(totalPaid)}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.04] text-center">
+              <span className="text-xs text-slate-500">Outstanding</span>
+              <p className="text-lg font-bold font-mono text-amber-400">
+                {formatUsd(totalOutstanding)}
+              </p>
+            </div>
+          </div>
+
+          {/* Invoice Table */}
+          {invoiceRecords.length === 0 ? (
+            <div className="text-center py-8 text-sm text-slate-500">
+              No invoices generated yet
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.06] hover:bg-transparent">
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider">
+                      Follower
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider">
+                      Quarter
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-right">
+                      Avg Balance
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-right">
+                      Fee Amount
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-center">
+                      Days
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-center">
+                      Status
+                    </TableHead>
+                    <TableHead className="text-xs text-slate-400 uppercase tracking-wider text-center">
+                      Action
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoiceRecords.map((invoice) => (
+                    <TableRow
+                      key={invoice.id}
+                      className="border-white/[0.04] hover:bg-white/[0.02]"
+                    >
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {invoice.followerName}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {invoice.followerEmail}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm font-mono">
+                        {invoice.quarterLabel}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {formatUsd(invoice.avgBalance)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-violet-400">
+                        {formatUsd(invoice.invoiceAmount)}
+                      </TableCell>
+                      <TableCell className="text-center text-sm font-mono text-slate-400">
+                        {invoice.daysActive}/{invoice.daysInQuarter}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-mono ${
+                            invoice.status === "paid"
+                              ? "border-emerald-500/30 text-emerald-400"
+                              : invoice.status === "emailed"
+                                ? "border-blue-500/30 text-blue-400"
+                                : invoice.status === "overdue"
+                                  ? "border-red-500/30 text-red-400"
+                                  : "border-amber-500/30 text-amber-400"
+                          }`}
+                        >
+                          {invoice.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {invoice.status === "paid" ? (
+                          <span className="text-xs text-slate-500">
+                            via {invoice.paidVia || "manual"}
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-white/[0.06] hover:bg-white/[0.02] text-xs h-7 px-2"
+                            onClick={() => handleMarkPaid(invoice.id)}
+                          >
+                            Mark Paid
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
