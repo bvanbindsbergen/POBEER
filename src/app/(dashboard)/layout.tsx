@@ -25,9 +25,10 @@ const navItems = [
 ];
 
 const leaderNavItems = [
-  { href: "/ai", label: "AI Assistant", icon: Brain },
   { href: "/admin", label: "Admin", icon: Shield },
 ];
+
+const aiNavItem = { href: "/ai", label: "AI Assistant", icon: Brain, highlight: true };
 
 export default function DashboardLayout({
   children,
@@ -75,7 +76,7 @@ export default function DashboardLayout({
     icon: Rocket,
   };
   const allNavItems = isLeader
-    ? [...navItems, ...leaderNavItems]
+    ? [navItems[0], aiNavItem, ...navItems.slice(1), ...leaderNavItems]
     : showOnboarding
       ? [onboardingNavItem, ...navItems]
       : navItems;
@@ -109,20 +110,33 @@ export default function DashboardLayout({
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
+            const isHighlight = "highlight" in item && item.highlight;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                   isActive
-                    ? "bg-emerald-500/10 text-emerald-400"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                    ? isHighlight
+                      ? "bg-gradient-to-r from-violet-500/15 to-cyan-500/15 text-violet-300 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25)]"
+                      : "bg-emerald-500/10 text-emerald-400"
+                    : isHighlight
+                      ? "text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.12)]"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
                 }`}
               >
                 <Icon className="w-4.5 h-4.5" />
                 {item.label}
-                {isActive && (
+                {isHighlight && !isActive && (
+                  <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-violet-500 to-cyan-500 text-white px-1.5 py-0.5 rounded-full">
+                    AI
+                  </span>
+                )}
+                {isActive && !isHighlight && (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                )}
+                {isActive && isHighlight && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />
                 )}
               </Link>
             );
@@ -187,14 +201,19 @@ export default function DashboardLayout({
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
+            const isHighlight = "highlight" in item && item.highlight;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${
                   isActive
-                    ? "text-emerald-400"
-                    : "text-slate-500 active:text-slate-300"
+                    ? isHighlight
+                      ? "text-violet-400"
+                      : "text-emerald-400"
+                    : isHighlight
+                      ? "text-violet-400/70 active:text-violet-300"
+                      : "text-slate-500 active:text-slate-300"
                 }`}
               >
                 <Icon className="w-5 h-5" />
