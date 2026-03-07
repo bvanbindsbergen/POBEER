@@ -11,6 +11,7 @@ import { BalanceSnapshotJob } from "./balance-snapshot";
 import { InvoiceGenerator } from "./invoice-generator";
 import { TransferTracker } from "./transfer-tracker";
 import { PendingTradeExpirer } from "./pending-trade-expirer";
+import { StrategyExecutor } from "./strategy-executor";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
 const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
@@ -25,6 +26,7 @@ class Worker {
   private invoiceGenerator: InvoiceGenerator;
   private transferTracker: TransferTracker;
   private pendingTradeExpirer: PendingTradeExpirer;
+  private strategyExecutor: StrategyExecutor;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private expirerTimer: NodeJS.Timeout | null = null;
@@ -46,6 +48,7 @@ class Worker {
     this.invoiceGenerator = new InvoiceGenerator();
     this.transferTracker = new TransferTracker();
     this.pendingTradeExpirer = new PendingTradeExpirer();
+    this.strategyExecutor = new StrategyExecutor();
   }
 
   async start() {
@@ -87,6 +90,9 @@ class Worker {
     this.startHeartbeat();
     this.startScheduler();
     this.startPendingTradeExpirer();
+
+    // Start strategy executor for auto-trading
+    this.strategyExecutor.start(leader);
 
     console.log("[Worker] Starting leader order watcher...");
     await this.leaderWatcher.start();
@@ -174,6 +180,8 @@ class Worker {
     if (this.expirerTimer) {
       clearInterval(this.expirerTimer);
     }
+
+    this.strategyExecutor.stop();
 
     if (this.leaderWatcher) {
       await this.leaderWatcher.stop();

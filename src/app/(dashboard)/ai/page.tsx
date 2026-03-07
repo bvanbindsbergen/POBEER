@@ -8,6 +8,8 @@ import { BacktestConfig } from "@/components/ai/backtest/backtest-config";
 import { BacktestResults } from "@/components/ai/backtest/backtest-results";
 import { BacktestList } from "@/components/ai/backtest/backtest-list";
 import { StrategyDiscovery } from "@/components/ai/strategy-discovery";
+import { ActivateStrategyModal } from "@/components/ai/activate-strategy-modal";
+import { OperationalDashboard } from "@/components/ai/operational-dashboard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,6 +19,7 @@ import {
   Trash2,
   Brain,
   ShieldAlert,
+  Zap,
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 
@@ -67,6 +70,17 @@ export default function AIPage() {
     strategyConfig?: StrategyConfig;
     symbol?: string;
     timeframe?: string;
+  } | null>(null);
+  const [activateSource, setActivateSource] = useState<{
+    id: string;
+    name: string;
+    symbol: string;
+    timeframe: string;
+    strategyConfig: string | object;
+    sourceType: "strategy" | "backtest";
+    totalPnl?: number | string;
+    winRate?: number | string;
+    sharpeRatio?: number | string;
   } | null>(null);
   const queryClient = useQueryClient();
 
@@ -136,6 +150,21 @@ export default function AIPage() {
     enabled: isLeader,
   });
   const strategies = stratData?.strategies || [];
+
+  // Fetch operational strategies count
+  const { data: opData } = useQuery({
+    queryKey: ["operational-strategies"],
+    queryFn: async () => {
+      const res = await fetch("/api/operational-strategies");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isLeader,
+    refetchInterval: 30_000,
+  });
+  const activeOpCount = (opData?.strategies || []).filter(
+    (s: { status: string }) => s.status === "active"
+  ).length;
 
   // Delete strategy
   const deleteStrategy = useMutation({
@@ -274,6 +303,18 @@ export default function AIPage() {
             <FlaskConical className="w-4 h-4 mr-1.5" />
             Backtests
           </TabsTrigger>
+          <TabsTrigger
+            value="live"
+            className="data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-400 text-sm"
+          >
+            <Zap className="w-4 h-4 mr-1.5" />
+            Live
+            {activeOpCount > 0 && (
+              <Badge className="ml-1.5 text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-400 border-amber-500/30">
+                {activeOpCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* Chat Tab */}
@@ -368,6 +409,24 @@ export default function AIPage() {
                           <FlaskConical className="w-3 h-3 mr-1" />
                           Backtest
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setActivateSource({
+                              id: s.id,
+                              name: s.name,
+                              symbol: s.symbol,
+                              timeframe: s.timeframe,
+                              strategyConfig: s.strategyConfig,
+                              sourceType: "strategy",
+                            })
+                          }
+                          className="h-7 text-xs border-amber-500/20 text-amber-400 hover:bg-amber-500/10"
+                        >
+                          <Zap className="w-3 h-3 mr-1" />
+                          Activate
+                        </Button>
                       </div>
                       <p className="text-[10px] text-slate-600 mt-2">
                         {new Date(s.createdAt).toLocaleDateString()}
@@ -402,15 +461,32 @@ export default function AIPage() {
           )}
 
           {backtestResult && (
-            <BacktestResults result={backtestResult as Parameters<typeof BacktestResults>[0]["result"]} candles={backtestCandles} />
+            <BacktestResults
+              result={backtestResult as Parameters<typeof BacktestResults>[0]["result"]}
+              candles={backtestCandles}
+              onActivate={(source) => setActivateSource(source)}
+            />
           )}
 
           <BacktestList
             onSelect={loadBacktest}
             selectedId={backtestResult ? (backtestResult as { id?: string }).id : undefined}
+            onActivate={(source) => setActivateSource(source)}
           />
         </TabsContent>
+
+        {/* Live Tab */}
+        <TabsContent value="live" className="mt-0">
+          <OperationalDashboard />
+        </TabsContent>
       </Tabs>
+
+      {/* Activate Strategy Modal */}
+      <ActivateStrategyModal
+        open={!!activateSource}
+        onOpenChange={(open) => { if (!open) setActivateSource(null); }}
+        source={activateSource}
+      />
     </div>
     </AIErrorBoundary>
   );

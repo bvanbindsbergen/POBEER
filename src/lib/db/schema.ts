@@ -54,6 +54,12 @@ export const symbolRuleActionEnum = pgEnum("symbol_rule_action", [
   "manual",
 ]);
 
+// Operational strategy enums
+export const operationalStrategyStatusEnum = pgEnum(
+  "operational_strategy_status",
+  ["active", "paused", "stopped"]
+);
+
 // AI Assistant enums
 export const aiConversationStatusEnum = pgEnum("ai_conversation_status", [
   "active",
@@ -410,6 +416,53 @@ export const strategySuggestions = pgTable("strategy_suggestions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Operational Strategies (live auto-trading)
+export const operationalStrategies = pgTable("operational_strategies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  backtestId: uuid("backtest_id").references(() => backtests.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  timeframe: varchar("timeframe", { length: 10 }).notNull(),
+  strategyConfig: text("strategy_config").notNull(), // JSON
+  status: operationalStrategyStatusEnum("status").notNull().default("active"),
+  maxCapUsd: real("max_cap_usd").notNull(),
+  maxCapPercent: real("max_cap_percent").notNull(),
+  dailyLossLimitUsd: real("daily_loss_limit_usd").notNull(),
+  inPosition: boolean("in_position").default(false),
+  entryPrice: real("entry_price"),
+  entryQuantity: real("entry_quantity"),
+  todayPnl: real("today_pnl").default(0),
+  todayPnlDate: varchar("today_pnl_date", { length: 10 }), // "YYYY-MM-DD"
+  totalPnl: real("total_pnl").default(0),
+  tradesCount: integer("trades_count").default(0),
+  lastCheckedAt: timestamp("last_checked_at"),
+  activatedAt: timestamp("activated_at").defaultNow(),
+  pausedAt: timestamp("paused_at"),
+  stoppedAt: timestamp("stopped_at"),
+  stoppedReason: text("stopped_reason"), // "manual" / "daily_loss_limit" / "kill_switch"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Operational Strategy Trades (trade log for live strategies)
+export const operationalStrategyTrades = pgTable("operational_strategy_trades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  strategyId: uuid("strategy_id")
+    .notNull()
+    .references(() => operationalStrategies.id),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  side: varchar("side", { length: 10 }).notNull(), // "buy" / "sell"
+  quantity: real("quantity").notNull(),
+  price: real("price").notNull(),
+  bybitOrderId: varchar("bybit_order_id", { length: 100 }),
+  pnl: real("pnl"),
+  reason: varchar("reason", { length: 50 }).notNull(), // "entry_signal" / "exit_signal" / "stop_loss" / "take_profit" / "manual_stop"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -431,3 +484,5 @@ export type Backtest = typeof backtests.$inferSelect;
 export type OhlcvCandle = typeof ohlcvCache.$inferSelect;
 export type NewsCacheEntry = typeof newsCache.$inferSelect;
 export type StrategySuggestion = typeof strategySuggestions.$inferSelect;
+export type OperationalStrategy = typeof operationalStrategies.$inferSelect;
+export type OperationalStrategyTrade = typeof operationalStrategyTrades.$inferSelect;

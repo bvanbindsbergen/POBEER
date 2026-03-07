@@ -2,7 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Clock, Zap } from "lucide-react";
 
 interface BacktestSummary {
   id: string;
@@ -21,9 +22,20 @@ interface BacktestSummary {
 interface BacktestListProps {
   onSelect: (id: string) => void;
   selectedId?: string;
+  onActivate?: (source: {
+    id: string;
+    name: string;
+    symbol: string;
+    timeframe: string;
+    strategyConfig: string | object;
+    sourceType: "strategy" | "backtest";
+    totalPnl?: number | string;
+    winRate?: number | string;
+    sharpeRatio?: number | string;
+  }) => void;
 }
 
-export function BacktestList({ onSelect, selectedId }: BacktestListProps) {
+export function BacktestList({ onSelect, selectedId, onActivate }: BacktestListProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["backtests"],
     queryFn: async () => {
@@ -92,17 +104,42 @@ export function BacktestList({ onSelect, selectedId }: BacktestListProps) {
                   <Badge className="bg-red-500/10 text-red-400 text-[10px]">Failed</Badge>
                 ) : null}
               </div>
-              <div className="flex items-center gap-3 text-[11px] text-slate-500">
-                <span>{config?.name || "Custom Strategy"}</span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {bt.startDate} - {bt.endDate}
-                </span>
-                {bt.winRate && (
-                  <span>WR: {(Number(bt.winRate) * 100).toFixed(0)}%</span>
-                )}
-                {bt.totalTrades !== null && (
-                  <span>{bt.totalTrades} trades</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                  <span>{config?.name || "Custom Strategy"}</span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {bt.startDate} - {bt.endDate}
+                  </span>
+                  {bt.winRate && (
+                    <span>WR: {(Number(bt.winRate) * 100).toFixed(0)}%</span>
+                  )}
+                  {bt.totalTrades !== null && (
+                    <span>{bt.totalTrades} trades</span>
+                  )}
+                </div>
+                {onActivate && bt.status === "completed" && isPositive && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onActivate({
+                        id: bt.id,
+                        name: config?.name || `${bt.symbol} ${bt.timeframe} Strategy`,
+                        symbol: bt.symbol,
+                        timeframe: bt.timeframe,
+                        strategyConfig: bt.strategyConfig,
+                        sourceType: "backtest",
+                        totalPnl: bt.totalPnl || undefined,
+                        winRate: bt.winRate || undefined,
+                      });
+                    }}
+                    className="h-6 text-[10px] border-amber-500/20 text-amber-400 hover:bg-amber-500/10 ml-2 shrink-0"
+                  >
+                    <Zap className="w-3 h-3 mr-0.5" />
+                    Activate
+                  </Button>
                 )}
               </div>
             </button>

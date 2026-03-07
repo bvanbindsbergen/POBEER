@@ -118,7 +118,7 @@ export default function DashboardLayout({
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
-            const isHighlight = "highlight" in item && item.highlight;
+            const isHighlight = Boolean("highlight" in item && (item as { highlight?: boolean }).highlight);
             return (
               <Link
                 key={item.href}
@@ -209,7 +209,7 @@ export default function DashboardLayout({
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
-            const isHighlight = "highlight" in item && item.highlight;
+            const isHighlight = Boolean("highlight" in item && (item as { highlight?: boolean }).highlight);
             return (
               <Link
                 key={item.href}

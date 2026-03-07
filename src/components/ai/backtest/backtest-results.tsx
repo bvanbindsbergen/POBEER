@@ -3,10 +3,12 @@
 import { PriceChart } from "../charts/price-chart";
 import { EquityChart } from "../charts/equity-chart";
 import type { Trade, EquityPoint } from "@/lib/ai/backtest/types";
-import { TrendingUp, TrendingDown, Activity, BarChart3, Target, Hash } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Activity, BarChart3, Target, Hash, Zap } from "lucide-react";
 
 interface BacktestResultsProps {
   result: {
+    id?: string;
     totalPnl: string | number;
     winRate: string | number;
     maxDrawdown: string | number;
@@ -15,11 +17,25 @@ interface BacktestResultsProps {
     totalTrades: number;
     trades?: string | Trade[];
     equityCurve?: string | EquityPoint[];
+    symbol?: string;
+    timeframe?: string;
+    strategyConfig?: string;
   };
   candles?: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }[];
+  onActivate?: (source: {
+    id: string;
+    name: string;
+    symbol: string;
+    timeframe: string;
+    strategyConfig: string | object;
+    sourceType: "strategy" | "backtest";
+    totalPnl?: number | string;
+    winRate?: number | string;
+    sharpeRatio?: number | string;
+  }) => void;
 }
 
-export function BacktestResults({ result, candles }: BacktestResultsProps) {
+export function BacktestResults({ result, candles, onActivate }: BacktestResultsProps) {
   const trades: Trade[] = typeof result.trades === "string"
     ? JSON.parse(result.trades || "[]")
     : result.trades || [];
@@ -117,6 +133,34 @@ export function BacktestResults({ result, candles }: BacktestResultsProps) {
             Equity Curve
           </h4>
           <EquityChart equityCurve={equityCurve} height={220} />
+        </div>
+      )}
+
+      {/* Activate Strategy Button */}
+      {onActivate && isPositive && result.id && result.symbol && result.timeframe && result.strategyConfig && (
+        <div className="flex justify-center">
+          <Button
+            onClick={() => {
+              const config = typeof result.strategyConfig === "string"
+                ? (() => { try { return JSON.parse(result.strategyConfig!); } catch { return null; } })()
+                : result.strategyConfig;
+              onActivate({
+                id: result.id!,
+                name: config?.name || `${result.symbol} ${result.timeframe} Strategy`,
+                symbol: result.symbol!,
+                timeframe: result.timeframe!,
+                strategyConfig: result.strategyConfig!,
+                sourceType: "backtest",
+                totalPnl: result.totalPnl,
+                winRate: result.winRate,
+                sharpeRatio: result.sharpeRatio,
+              });
+            }}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            <Zap className="w-4 h-4 mr-1.5" />
+            Activate Strategy for Live Trading
+          </Button>
         </div>
       )}
     </div>
