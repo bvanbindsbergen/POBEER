@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Zap, AlertTriangle, Loader2, DollarSign, Percent, Shield } from "lucide-react";
+import { Zap, AlertTriangle, Loader2, DollarSign, Percent, Shield, ShieldCheck, ShieldAlert, Flame } from "lucide-react";
 
 interface ActivateStrategyModalProps {
   open: boolean;
@@ -141,6 +141,39 @@ export function ActivateStrategyModal({
             )}
           </div>
         )}
+
+        {/* Risk Presets */}
+        <div className="space-y-1.5">
+          <label className="text-xs text-slate-400">Risk Preset</label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: "Low", icon: ShieldCheck, cap: 200, pct: 5, loss: 50, color: "emerald" },
+              { label: "Balanced", icon: Shield, cap: 500, pct: 10, loss: 100, color: "amber" },
+              { label: "High", icon: Flame, cap: 1000, pct: 20, loss: 200, color: "red" },
+            ].map((preset) => {
+              const isActive = maxCapUsd === preset.cap && maxCapPercent === preset.pct && dailyLossLimitUsd === preset.loss;
+              return (
+                <button
+                  key={preset.label}
+                  onClick={() => {
+                    setMaxCapUsd(preset.cap);
+                    setMaxCapPercent(preset.pct);
+                    setDailyLossLimitUsd(preset.loss);
+                  }}
+                  className={`rounded-lg border p-2 text-center transition-colors ${
+                    isActive
+                      ? `bg-${preset.color}-500/10 border-${preset.color}-500/30 text-${preset.color}-400`
+                      : "bg-[#111827] border-white/[0.06] text-slate-400 hover:border-white/[0.12]"
+                  }`}
+                >
+                  <preset.icon className="w-4 h-4 mx-auto mb-1" />
+                  <div className="text-[11px] font-medium">{preset.label}</div>
+                  <div className="text-[9px] text-slate-500">${preset.cap} / {preset.pct}%</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Fund Allocation Inputs */}
         <div className="space-y-3">

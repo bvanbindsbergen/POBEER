@@ -14,7 +14,11 @@ export interface StrategyConfig {
   exitConditions: Condition[];
   stopLossPercent?: number;
   takeProfitPercent?: number;
+  trailingStopPercent?: number; // exit when price drops X% from highest since entry
   positionSizePercent: number; // % of equity per trade
+  dcaEnabled?: boolean;
+  dcaOrders?: number; // total DCA portions (e.g. 3 = initial + 2 more)
+  dcaDropPercent?: number; // buy next portion when price drops X% from last buy
 }
 
 export interface Trade {

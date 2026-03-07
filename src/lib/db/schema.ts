@@ -434,6 +434,9 @@ export const operationalStrategies = pgTable("operational_strategies", {
   inPosition: boolean("in_position").default(false),
   entryPrice: real("entry_price"),
   entryQuantity: real("entry_quantity"),
+  highestPriceSinceEntry: real("highest_price_since_entry"), // for trailing stop
+  dcaOrdersFilled: integer("dca_orders_filled").default(0), // how many DCA portions placed
+  avgEntryPrice: real("avg_entry_price"), // weighted average for DCA
   todayPnl: real("today_pnl").default(0),
   todayPnlDate: varchar("today_pnl_date", { length: 10 }), // "YYYY-MM-DD"
   totalPnl: real("total_pnl").default(0),

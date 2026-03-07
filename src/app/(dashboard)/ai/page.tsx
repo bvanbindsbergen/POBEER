@@ -10,6 +10,8 @@ import { BacktestList } from "@/components/ai/backtest/backtest-list";
 import { StrategyDiscovery } from "@/components/ai/strategy-discovery";
 import { ActivateStrategyModal } from "@/components/ai/activate-strategy-modal";
 import { OperationalDashboard } from "@/components/ai/operational-dashboard";
+import { PumpScreener } from "@/components/ai/pump-screener";
+import { MarketScanner } from "@/components/ai/market-scanner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,6 +22,8 @@ import {
   Brain,
   ShieldAlert,
   Zap,
+  Radar,
+  Flame,
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 
@@ -315,6 +319,13 @@ export default function AIPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger
+            value="screeners"
+            className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400 text-sm"
+          >
+            <Radar className="w-4 h-4 mr-1.5" />
+            Screeners
+          </TabsTrigger>
         </TabsList>
 
         {/* Chat Tab */}
@@ -478,6 +489,31 @@ export default function AIPage() {
         {/* Live Tab */}
         <TabsContent value="live" className="mt-0">
           <OperationalDashboard />
+        </TabsContent>
+
+        {/* Screeners Tab */}
+        <TabsContent value="screeners" className="mt-0 space-y-6">
+          <div className="rounded-xl bg-[#111827] border border-white/[0.06] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-amber-500/10">
+                <Flame className="w-4 h-4 text-amber-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-200">Pump Screener</h3>
+              <span className="text-[10px] text-slate-500">Real-time price & volume spike detection</span>
+            </div>
+            <PumpScreener />
+          </div>
+
+          <div className="rounded-xl bg-[#111827] border border-white/[0.06] p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 rounded-lg bg-cyan-500/10">
+                <Radar className="w-4 h-4 text-cyan-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-200">Market Scanner</h3>
+              <span className="text-[10px] text-slate-500">Technical analysis across top 20 coins</span>
+            </div>
+            <MarketScanner />
+          </div>
         </TabsContent>
       </Tabs>
 

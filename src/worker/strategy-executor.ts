@@ -24,7 +24,6 @@ export class StrategyExecutor {
     this.leader = leader;
     console.log("[StrategyExecutor] Started, checking every 60s");
     this.timer = setInterval(() => this.tick(), TICK_INTERVAL);
-    // Run first tick after 10s delay to let other services initialize
     setTimeout(() => this.tick(), 10_000);
   }
 
@@ -40,18 +39,14 @@ export class StrategyExecutor {
     if (!this.leader) return;
 
     try {
-      // Check kill switch
       const [killSwitch] = await db
         .select()
         .from(systemConfig)
         .where(eq(systemConfig.key, "strategy_kill_switch"))
         .limit(1);
 
-      if (killSwitch?.value === "true") {
-        return;
-      }
+      if (killSwitch?.value === "true") return;
 
-      // Load all active strategies
       const strategies = await db
         .select()
         .from(operationalStrategies)
@@ -82,7 +77,6 @@ export class StrategyExecutor {
 
     const today = new Date().toISOString().split("T")[0];
 
-    // Reset daily PnL if new day
     if (strategy.todayPnlDate !== today) {
       await db
         .update(operationalStrategies)
@@ -92,7 +86,6 @@ export class StrategyExecutor {
       strategy.todayPnlDate = today;
     }
 
-    // Fetch candles (7 days for indicator warmup)
     let candles;
     try {
       candles = await fetchCandles(strategy.symbol, strategy.timeframe, 7);
@@ -103,7 +96,6 @@ export class StrategyExecutor {
 
     if (candles.length < 2) return;
 
-    // Parse strategy config
     let config: StrategyConfig;
     try {
       config = JSON.parse(strategy.strategyConfig);
@@ -112,7 +104,6 @@ export class StrategyExecutor {
       return;
     }
 
-    // Compute indicators
     const indicatorCache = new Map<string, (number | undefined)[]>();
     const allConditions = [...config.entryConditions, ...config.exitConditions];
 
@@ -126,7 +117,6 @@ export class StrategyExecutor {
     const lastIndex = candles.length - 1;
     const lastPrice = candles[lastIndex].close;
 
-    // Update last checked
     await db
       .update(operationalStrategies)
       .set({ lastCheckedAt: new Date(), updatedAt: new Date() })
@@ -138,7 +128,28 @@ export class StrategyExecutor {
         await this.enterPosition(strategy, config, lastPrice);
       }
     } else {
-      // Check exit conditions (SL, TP, signal)
+      // Update trailing stop high-water mark
+      if (config.trailingStopPercent && lastPrice > (strategy.highestPriceSinceEntry || 0)) {
+        await db
+          .update(operationalStrategies)
+          .set({ highestPriceSinceEntry: lastPrice, updatedAt: new Date() })
+          .where(eq(operationalStrategies.id, strategy.id));
+        strategy.highestPriceSinceEntry = lastPrice;
+      }
+
+      // Check DCA: if DCA enabled and more portions available, check if price dropped enough
+      if (config.dcaEnabled && config.dcaOrders && config.dcaDropPercent) {
+        const filledSoFar = strategy.dcaOrdersFilled || 1;
+        if (filledSoFar < config.dcaOrders) {
+          const lastBuyPrice = strategy.avgEntryPrice || strategy.entryPrice || lastPrice;
+          const dropFromLastBuy = ((lastBuyPrice - lastPrice) / lastBuyPrice) * 100;
+          if (dropFromLastBuy >= config.dcaDropPercent) {
+            await this.placeDcaOrder(strategy, config, lastPrice);
+          }
+        }
+      }
+
+      // Check exit conditions (trailing stop, SL, TP, signal)
       await this.checkExit(strategy, config, lastIndex, indicatorCache, lastPrice);
     }
   }
@@ -151,44 +162,44 @@ export class StrategyExecutor {
     if (!this.leader) return;
 
     try {
-      // Create exchange instance for leader
       const apiKey = decrypt(this.leader.apiKeyEncrypted!);
       const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
       const exchange = createExchange({ apiKey, apiSecret });
 
       try {
-        // Fetch balance
         const balance = await fetchUsdtBalance(exchange);
         const capFromPercent = balance.free * (strategy.maxCapPercent / 100);
-        const effectiveCap = Math.min(strategy.maxCapUsd, capFromPercent);
+        let effectiveCap = Math.min(strategy.maxCapUsd, capFromPercent);
 
         if (effectiveCap < 10) {
           console.log(`[StrategyExecutor] ${strategy.name}: Effective cap too low ($${effectiveCap.toFixed(2)})`);
           return;
         }
 
-        // Calculate quantity
-        const quantity = effectiveCap / currentPrice;
+        // If DCA is enabled, only use a portion for the first order
+        const dcaOrders = config.dcaEnabled && config.dcaOrders ? config.dcaOrders : 1;
+        const portionCap = effectiveCap / dcaOrders;
+        const quantity = portionCap / currentPrice;
 
-        // Place market BUY
-        console.log(`[StrategyExecutor] ${strategy.name}: ENTRY BUY ${quantity.toFixed(6)} ${strategy.symbol} @ ~$${currentPrice.toFixed(2)}`);
+        console.log(`[StrategyExecutor] ${strategy.name}: ENTRY BUY ${quantity.toFixed(6)} ${strategy.symbol} @ ~$${currentPrice.toFixed(2)}${dcaOrders > 1 ? ` (DCA 1/${dcaOrders})` : ""}`);
         const order = await placeMarketOrder(exchange, strategy.symbol, "buy", quantity);
 
         const fillPrice = order.average || order.price || currentPrice;
         const fillQty = order.filled || quantity;
 
-        // Update DB
         await db
           .update(operationalStrategies)
           .set({
             inPosition: true,
             entryPrice: fillPrice,
             entryQuantity: fillQty,
+            avgEntryPrice: fillPrice,
+            highestPriceSinceEntry: fillPrice,
+            dcaOrdersFilled: 1,
             updatedAt: new Date(),
           })
           .where(eq(operationalStrategies.id, strategy.id));
 
-        // Record trade
         await db.insert(operationalStrategyTrades).values({
           strategyId: strategy.id,
           symbol: strategy.symbol,
@@ -199,12 +210,11 @@ export class StrategyExecutor {
           reason: "entry_signal",
         });
 
-        // Notification
         await createNotification(
           strategy.userId,
           "strategy_entry",
           `Strategy Entry: ${strategy.name}`,
-          `Bought ${fillQty.toFixed(6)} ${strategy.symbol} at $${fillPrice.toFixed(2)}`,
+          `Bought ${fillQty.toFixed(6)} ${strategy.symbol} at $${fillPrice.toFixed(2)}${dcaOrders > 1 ? ` (DCA 1/${dcaOrders})` : ""}`,
           { strategyId: strategy.id, orderId: order.id }
         );
 
@@ -217,6 +227,78 @@ export class StrategyExecutor {
     }
   }
 
+  private async placeDcaOrder(
+    strategy: typeof operationalStrategies.$inferSelect,
+    config: StrategyConfig,
+    currentPrice: number
+  ) {
+    if (!this.leader) return;
+
+    try {
+      const apiKey = decrypt(this.leader.apiKeyEncrypted!);
+      const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
+      const exchange = createExchange({ apiKey, apiSecret });
+
+      try {
+        const balance = await fetchUsdtBalance(exchange);
+        const capFromPercent = balance.free * (strategy.maxCapPercent / 100);
+        const effectiveCap = Math.min(strategy.maxCapUsd, capFromPercent);
+        const dcaOrders = config.dcaOrders || 1;
+        const portionCap = effectiveCap / dcaOrders;
+        const quantity = portionCap / currentPrice;
+
+        if (portionCap < 10) return;
+
+        const filledSoFar = strategy.dcaOrdersFilled || 1;
+        const newFilled = filledSoFar + 1;
+
+        console.log(`[StrategyExecutor] ${strategy.name}: DCA BUY ${quantity.toFixed(6)} ${strategy.symbol} @ ~$${currentPrice.toFixed(2)} (${newFilled}/${dcaOrders})`);
+        const order = await placeMarketOrder(exchange, strategy.symbol, "buy", quantity);
+
+        const fillPrice = order.average || order.price || currentPrice;
+        const fillQty = order.filled || quantity;
+
+        // Calculate new weighted average entry
+        const oldQty = strategy.entryQuantity || 0;
+        const oldAvg = strategy.avgEntryPrice || strategy.entryPrice || 0;
+        const totalQty = oldQty + fillQty;
+        const newAvg = totalQty > 0 ? ((oldAvg * oldQty) + (fillPrice * fillQty)) / totalQty : fillPrice;
+
+        await db
+          .update(operationalStrategies)
+          .set({
+            entryQuantity: totalQty,
+            avgEntryPrice: newAvg,
+            dcaOrdersFilled: newFilled,
+            updatedAt: new Date(),
+          })
+          .where(eq(operationalStrategies.id, strategy.id));
+
+        await db.insert(operationalStrategyTrades).values({
+          strategyId: strategy.id,
+          symbol: strategy.symbol,
+          side: "buy",
+          quantity: fillQty,
+          price: fillPrice,
+          bybitOrderId: order.id,
+          reason: "entry_signal",
+        });
+
+        await createNotification(
+          strategy.userId,
+          "strategy_dca",
+          `DCA Buy: ${strategy.name}`,
+          `DCA ${newFilled}/${dcaOrders}: Bought ${fillQty.toFixed(6)} ${strategy.symbol} at $${fillPrice.toFixed(2)} | Avg: $${newAvg.toFixed(2)}`,
+          { strategyId: strategy.id, orderId: order.id, dcaOrder: newFilled }
+        );
+      } finally {
+        await exchange.close();
+      }
+    } catch (err) {
+      console.error(`[StrategyExecutor] ${strategy.name}: DCA order failed:`, err);
+    }
+  }
+
   private async checkExit(
     strategy: typeof operationalStrategies.$inferSelect,
     config: StrategyConfig,
@@ -226,19 +308,29 @@ export class StrategyExecutor {
   ) {
     if (!strategy.entryPrice || !strategy.entryQuantity) return;
 
-    const pnlPercent = ((currentPrice - strategy.entryPrice) / strategy.entryPrice) * 100;
+    // Use avgEntryPrice for PnL calculation if DCA is active
+    const refPrice = strategy.avgEntryPrice || strategy.entryPrice;
+    const pnlPercent = ((currentPrice - refPrice) / refPrice) * 100;
     let exitReason: string | null = null;
 
-    // Check stop loss
-    if (config.stopLossPercent && pnlPercent <= -config.stopLossPercent) {
+    // Check trailing stop first (highest priority)
+    if (config.trailingStopPercent && strategy.highestPriceSinceEntry) {
+      const dropFromHigh = ((strategy.highestPriceSinceEntry - currentPrice) / strategy.highestPriceSinceEntry) * 100;
+      if (dropFromHigh >= config.trailingStopPercent) {
+        exitReason = "trailing_stop";
+      }
+    }
+
+    // Check fixed stop loss
+    if (!exitReason && config.stopLossPercent && pnlPercent <= -config.stopLossPercent) {
       exitReason = "stop_loss";
     }
     // Check take profit
-    else if (config.takeProfitPercent && pnlPercent >= config.takeProfitPercent) {
+    if (!exitReason && config.takeProfitPercent && pnlPercent >= config.takeProfitPercent) {
       exitReason = "take_profit";
     }
     // Check exit signal conditions
-    else if (checkConditions(config.exitConditions, lastIndex, indicatorCache)) {
+    if (!exitReason && checkConditions(config.exitConditions, lastIndex, indicatorCache)) {
       exitReason = "exit_signal";
     }
 
@@ -260,17 +352,16 @@ export class StrategyExecutor {
       const exchange = createExchange({ apiKey, apiSecret });
 
       try {
-        // Place market SELL
         console.log(`[StrategyExecutor] ${strategy.name}: EXIT SELL ${strategy.entryQuantity.toFixed(6)} ${strategy.symbol} (${reason})`);
         const order = await placeMarketOrder(exchange, strategy.symbol, "sell", strategy.entryQuantity);
 
         const fillPrice = order.average || order.price || currentPrice;
-        const pnl = (fillPrice - strategy.entryPrice) * strategy.entryQuantity;
+        const refPrice = strategy.avgEntryPrice || strategy.entryPrice;
+        const pnl = (fillPrice - refPrice) * strategy.entryQuantity;
         const newTodayPnl = (strategy.todayPnl || 0) + pnl;
         const newTotalPnl = (strategy.totalPnl || 0) + pnl;
         const newTradesCount = (strategy.tradesCount || 0) + 1;
 
-        // Check daily loss limit
         let newStatus: "active" | "paused" | "stopped" = "active";
         let stoppedReason: string | null = null;
         if (newTodayPnl <= -strategy.dailyLossLimitUsd) {
@@ -279,13 +370,15 @@ export class StrategyExecutor {
           console.log(`[StrategyExecutor] ${strategy.name}: STOPPED - Daily loss limit breached ($${newTodayPnl.toFixed(2)})`);
         }
 
-        // Update DB
         await db
           .update(operationalStrategies)
           .set({
             inPosition: false,
             entryPrice: null,
             entryQuantity: null,
+            avgEntryPrice: null,
+            highestPriceSinceEntry: null,
+            dcaOrdersFilled: 0,
             todayPnl: newTodayPnl,
             totalPnl: newTotalPnl,
             tradesCount: newTradesCount,
@@ -296,7 +389,6 @@ export class StrategyExecutor {
           })
           .where(eq(operationalStrategies.id, strategy.id));
 
-        // Record trade
         await db.insert(operationalStrategyTrades).values({
           strategyId: strategy.id,
           symbol: strategy.symbol,
@@ -308,7 +400,6 @@ export class StrategyExecutor {
           reason,
         });
 
-        // Notification
         const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
         await createNotification(
           strategy.userId,
@@ -348,7 +439,6 @@ export class StrategyExecutor {
 
     if (!strategy || !strategy.inPosition || !strategy.entryPrice || !strategy.entryQuantity) return;
 
-    // Fetch current price
     const candles = await fetchCandles(strategy.symbol, strategy.timeframe, 1);
     const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : strategy.entryPrice;
 
