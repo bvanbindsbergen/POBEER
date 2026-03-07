@@ -4,7 +4,7 @@ import { eq, and, gt } from "drizzle-orm";
 import crypto from "crypto";
 import { cookies } from "next/headers";
 
-const SESSION_COOKIE = "pobeer_session";
+const SESSION_COOKIE = "alphora_session";
 const SESSION_DURATION_DAYS = 30;
 
 export async function createSession(userId: string): Promise<string> {

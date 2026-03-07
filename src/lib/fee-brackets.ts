@@ -1,5 +1,5 @@
 /**
- * Fee bracket definitions for POBEER quarterly invoicing.
+ * Fee bracket definitions for Alphora quarterly invoicing.
  *
  * Each follower pays a BASE_FEE (€297) plus a bracket fee based on
  * their quarterly profit (equity change minus net deposits).

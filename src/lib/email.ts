@@ -44,7 +44,7 @@ export async function sendInvoiceEmail(
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const paymentUrl = `${baseUrl}/invoice/${paymentToken}`;
 
-  const subject = `POBEER — Invoice for ${quarterLabel}`;
+  const subject = `Alphora — Invoice for ${quarterLabel}`;
 
   const profitColor = breakdown && breakdown.quarterProfit >= 0 ? "#10b981" : "#ef4444";
   const profitSign = breakdown && breakdown.quarterProfit >= 0 ? "+" : "";
@@ -68,7 +68,7 @@ export async function sendInvoiceEmail(
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #0f172a; color: #e2e8f0;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <h2 style="color: #e2e8f0; margin: 0;">POBEER</h2>
+        <h2 style="color: #e2e8f0; margin: 0;">Alphora</h2>
         <p style="color: #64748b; font-size: 14px; margin: 4px 0 0;">Quarterly Invoice</p>
       </div>
       <p style="color: #94a3b8;">Hi ${followerName},</p>

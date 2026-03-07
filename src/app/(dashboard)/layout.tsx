@@ -10,7 +10,7 @@ import {
   Settings,
   Shield,
   LogOut,
-  Beer,
+  Hexagon,
   Rocket,
   Wallet,
   Brain,
@@ -94,9 +94,9 @@ export default function DashboardLayout({
         <div className="flex items-center justify-between px-6 h-16 border-b border-white/[0.06]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center flex-shrink-0">
-              <Beer className="w-4 h-4 text-[#022c22]" />
+              <Hexagon className="w-4 h-4 text-[#022c22]" />
             </div>
-            <span className="text-lg font-bold tracking-tight">POBEER</span>
+            <span className="text-lg font-bold tracking-tight">Alphora</span>
           </div>
           <NotificationBell />
         </div>
@@ -162,9 +162,9 @@ export default function DashboardLayout({
         <header className="md:hidden flex items-center justify-between px-4 h-14 border-b border-white/[0.06] bg-[#070b12]">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-md bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
-              <Beer className="w-3.5 h-3.5 text-[#022c22]" />
+              <Hexagon className="w-3.5 h-3.5 text-[#022c22]" />
             </div>
-            <span className="text-base font-bold">POBEER</span>
+            <span className="text-base font-bold">Alphora</span>
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell />

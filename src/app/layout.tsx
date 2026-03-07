@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "POBEER — Trade Copier",
+  title: "Alphora — Trade Copier",
   description: "Copy spot trades from the lead trader automatically",
 };
 

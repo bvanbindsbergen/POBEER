@@ -11,14 +11,14 @@ import {
   CheckCircle,
   ChevronRight,
   ExternalLink,
-  Beer,
+  Hexagon,
   Key,
   Settings,
   Rocket,
 } from "lucide-react";
 
 const STEPS = [
-  { id: 1, title: "Create ByBit Account", icon: Beer },
+  { id: 1, title: "Create ByBit Account", icon: Hexagon },
   { id: 2, title: "Create API Keys", icon: Key },
   { id: 3, title: "Enter API Keys", icon: Key },
   { id: 4, title: "Configure Settings", icon: Settings },
@@ -45,7 +45,7 @@ export default function OnboardingPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          Welcome to <span className="text-emerald-400">POBEER</span>
+          Welcome to <span className="text-emerald-400">Alphora</span>
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Let&apos;s get you set up for copy trading in a few simple steps
@@ -154,7 +154,7 @@ export default function OnboardingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-400">
-              API keys allow POBEER to place trades on your behalf. Follow these
+              API keys allow Alphora to place trades on your behalf. Follow these
               steps carefully:
             </p>
             <ol className="space-y-3 text-sm text-slate-300">
@@ -217,7 +217,7 @@ export default function OnboardingPage() {
             <div className="bg-red-500/5 border border-red-500/15 rounded-lg p-3">
               <p className="text-xs text-red-200/80">
                 <strong>Security Warning:</strong> Never enable Withdrawal
-                permissions. POBEER only needs Spot Trading access. Your API
+                permissions. Alphora only needs Spot Trading access. Your API
                 secret will be shown only once by ByBit — save it securely.
               </p>
             </div>

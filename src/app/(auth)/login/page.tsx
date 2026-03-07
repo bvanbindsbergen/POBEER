@@ -50,9 +50,9 @@ export default function LoginPage() {
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 mb-4">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
-            <span className="text-lg font-extrabold text-[#022c22]">P</span>
+            <span className="text-lg font-extrabold text-[#022c22]">A</span>
           </div>
-          <span className="text-2xl font-bold tracking-tight">POBEER</span>
+          <span className="text-2xl font-bold tracking-tight">Alphora</span>
         </div>
         <h1 className="text-xl font-semibold text-foreground">Welcome back</h1>
         <p className="text-sm text-muted-foreground">

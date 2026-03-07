@@ -49,7 +49,7 @@ class Worker {
   }
 
   async start() {
-    console.log("[Worker] Starting POBEER trade copier worker...");
+    console.log("[Worker] Starting Alphora trade copier worker...");
 
     // Find the leader user
     const [leader] = await db

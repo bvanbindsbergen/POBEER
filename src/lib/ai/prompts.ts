@@ -7,7 +7,7 @@ export function buildSystemPrompt(user: User, context?: {
   activeSymbols?: string[];
 }): string {
   const parts = [
-    `You are an AI trading assistant for ${user.name}, the leader trader on the POBEER copy-trading platform.`,
+    `You are an AI trading assistant for ${user.name}, the leader trader on the Alphora copy-trading platform.`,
     `Your role is to help discover short-term trading strategies, analyze market conditions, and backtest ideas.`,
     "",
     "## Your Capabilities",

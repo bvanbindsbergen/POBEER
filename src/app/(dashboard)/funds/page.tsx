@@ -117,7 +117,7 @@ export default function FundsPage() {
               <p className="text-xs text-slate-400 leading-relaxed">
                 Fund your ByBit account directly through the ByBit app or
                 website. You can deposit via bank transfer, credit card, or
-                crypto transfer. Deposits appear in your POBEER balance within
+                crypto transfer. Deposits appear in your Alphora balance within
                 24 hours.
               </p>
               <a
@@ -137,7 +137,7 @@ export default function FundsPage() {
                 <h3 className="text-sm font-semibold">Withdraw</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Withdraw funds directly through your ByBit account. POBEER does
+                Withdraw funds directly through your ByBit account. Alphora does
                 not have withdrawal access — your funds are always under your
                 control. Note: withdrawals may affect your copy trading
                 positions.
