@@ -8,6 +8,8 @@ import {
   boolean,
   integer,
   uuid,
+  uniqueIndex,
+  real,
 } from "drizzle-orm/pg-core";
 
 // Enums
@@ -50,6 +52,23 @@ export const symbolRuleActionEnum = pgEnum("symbol_rule_action", [
   "copy",
   "skip",
   "manual",
+]);
+
+// AI Assistant enums
+export const aiConversationStatusEnum = pgEnum("ai_conversation_status", [
+  "active",
+  "archived",
+]);
+export const aiMessageRoleEnum = pgEnum("ai_message_role", [
+  "user",
+  "assistant",
+  "system",
+]);
+export const backtestStatusEnum = pgEnum("backtest_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
 ]);
 
 // Users
@@ -291,6 +310,106 @@ export const symbolRules = pgTable("symbol_rules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// AI Conversations
+export const aiConversations = pgTable("ai_conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  title: varchar("title", { length: 255 }).notNull().default("New Chat"),
+  status: aiConversationStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// AI Messages
+export const aiMessages = pgTable("ai_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => aiConversations.id, { onDelete: "cascade" }),
+  role: aiMessageRoleEnum("role").notNull(),
+  content: text("content").notNull(),
+  toolCalls: text("tool_calls"), // JSON
+  toolResults: text("tool_results"), // JSON
+  metadata: text("metadata"), // JSON
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Backtests
+export const backtests = pgTable("backtests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  conversationId: uuid("conversation_id").references(() => aiConversations.id),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  timeframe: varchar("timeframe", { length: 10 }).notNull(),
+  startDate: varchar("start_date", { length: 10 }).notNull(),
+  endDate: varchar("end_date", { length: 10 }).notNull(),
+  strategyConfig: text("strategy_config").notNull(), // JSON
+  status: backtestStatusEnum("status").notNull().default("pending"),
+  totalPnl: numeric("total_pnl", { precision: 20, scale: 8 }),
+  winRate: numeric("win_rate", { precision: 7, scale: 4 }),
+  maxDrawdown: numeric("max_drawdown", { precision: 20, scale: 8 }),
+  sharpeRatio: numeric("sharpe_ratio", { precision: 10, scale: 4 }),
+  profitFactor: numeric("profit_factor", { precision: 10, scale: 4 }),
+  totalTrades: integer("total_trades"),
+  trades: text("trades"), // JSON
+  equityCurve: text("equity_curve"), // JSON
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// OHLCV Cache
+export const ohlcvCache = pgTable(
+  "ohlcv_cache",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    symbol: varchar("symbol", { length: 20 }).notNull(),
+    timeframe: varchar("timeframe", { length: 10 }).notNull(),
+    timestamp: timestamp("timestamp").notNull(),
+    open: real("open").notNull(),
+    high: real("high").notNull(),
+    low: real("low").notNull(),
+    close: real("close").notNull(),
+    volume: real("volume").notNull(),
+  },
+  (table) => [
+    uniqueIndex("ohlcv_symbol_tf_ts_idx").on(
+      table.symbol,
+      table.timeframe,
+      table.timestamp
+    ),
+  ]
+);
+
+// News/Market Data Cache
+export const newsCache = pgTable("news_cache", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: varchar("source", { length: 50 }).notNull(),
+  cacheKey: varchar("cache_key", { length: 255 }).notNull(),
+  data: text("data").notNull(), // JSON
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Strategy Suggestions
+export const strategySuggestions = pgTable("strategy_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  conversationId: uuid("conversation_id").references(() => aiConversations.id),
+  name: varchar("name", { length: 255 }).notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  timeframe: varchar("timeframe", { length: 10 }).notNull(),
+  strategyConfig: text("strategy_config").notNull(), // JSON
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Type exports
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -306,3 +425,9 @@ export type QuarterEquitySnapshot = typeof quarterEquitySnapshots.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type PendingTrade = typeof pendingTrades.$inferSelect;
 export type SymbolRule = typeof symbolRules.$inferSelect;
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type Backtest = typeof backtests.$inferSelect;
+export type OhlcvCandle = typeof ohlcvCache.$inferSelect;
+export type NewsCacheEntry = typeof newsCache.$inferSelect;
+export type StrategySuggestion = typeof strategySuggestions.$inferSelect;

@@ -13,6 +13,7 @@ import {
   Beer,
   Rocket,
   Wallet,
+  Brain,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
   { href: "/funds", label: "Funds", icon: Wallet },
+  { href: "/ai", label: "AI Assistant", icon: Brain },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
