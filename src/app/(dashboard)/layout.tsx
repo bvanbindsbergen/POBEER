@@ -16,19 +16,27 @@ import {
   Brain,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
+import type { LucideIcon } from "lucide-react";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  highlight?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
   { href: "/funds", label: "Funds", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const leaderNavItems = [
+const leaderNavItems: NavItem[] = [
   { href: "/admin", label: "Admin", icon: Shield },
 ];
 
-const aiNavItem = { href: "/ai", label: "AI Assistant", icon: Brain, highlight: true };
+const aiNavItem: NavItem = { href: "/ai", label: "AI Assistant", icon: Brain, highlight: true };
 
 export default function DashboardLayout({
   children,
