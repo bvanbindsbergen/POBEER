@@ -135,17 +135,17 @@ export default function DashboardLayout({
               >
                 <Icon className="w-4.5 h-4.5" />
                 {item.label}
-                {isHighlight && !isActive && (
+                {isHighlight && !isActive ? (
                   <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-violet-500 to-cyan-500 text-white px-1.5 py-0.5 rounded-full">
                     AI
                   </span>
-                )}
-                {isActive && !isHighlight && (
+                ) : null}
+                {isActive && !isHighlight ? (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                )}
-                {isActive && isHighlight && (
+                ) : null}
+                {isActive && isHighlight ? (
                   <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />
-                )}
+                ) : null}
               </Link>
             );
           })}

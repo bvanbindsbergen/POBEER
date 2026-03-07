@@ -7,7 +7,8 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "drizzle-kit push --force && next build",
+    "build": "next build",
+    "db:push:force": "drizzle-kit push --force",
     "build:worker": "tsc -p tsconfig.worker.json && node scripts/fix-worker-paths.js",
     "start": "next start",
     "start:worker": "node dist/worker/worker/main.js",
