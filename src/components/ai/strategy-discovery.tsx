@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,8 +58,10 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
     retry: 1,
   });
 
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+
   const saveStrategy = useMutation({
-    mutationFn: async (strategy: DiscoveredStrategy) => {
+    mutationFn: async ({ strategy, index }: { strategy: DiscoveredStrategy; index: number }) => {
       const res = await fetch("/api/ai/strategies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,10 +73,14 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
           notes: strategy.reasoning,
         }),
       });
-      if (!res.ok) throw new Error("Failed to save");
-      return res.json();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save");
+      }
+      return { ...(await res.json()), index };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setSavedIds((prev) => new Set(prev).add(data.index));
       queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
     },
   });
@@ -232,12 +239,16 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => saveStrategy.mutate(s)}
-                    disabled={saveStrategy.isPending}
-                    className="h-7 text-xs border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
+                    onClick={() => saveStrategy.mutate({ strategy: s, index: i })}
+                    disabled={saveStrategy.isPending || savedIds.has(i)}
+                    className={`h-7 text-xs ${
+                      savedIds.has(i)
+                        ? "border-emerald-500/30 text-emerald-500 opacity-60"
+                        : "border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
+                    }`}
                   >
                     <Bookmark className="w-3 h-3 mr-1" />
-                    Save
+                    {savedIds.has(i) ? "Saved" : "Save"}
                   </Button>
                 </div>
               </div>

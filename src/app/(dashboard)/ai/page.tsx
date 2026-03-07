@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, type ErrorInfo, Component, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChatPanel } from "@/components/ai/chat/chat-panel";
@@ -19,6 +19,43 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
+
+class AIErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[AI Page Error]", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-6 text-center">
+            <p className="text-sm text-red-400 mb-2">Something went wrong loading this section.</p>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false });
+                window.location.reload();
+              }}
+              className="text-xs text-slate-400 hover:text-slate-200 underline"
+            >
+              Reload page
+            </button>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function AIPage() {
   const [activeTab, setActiveTab] = useState("chat");
@@ -190,6 +227,7 @@ export default function AIPage() {
   }
 
   return (
+    <AIErrorBoundary>
     <div>
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
@@ -374,5 +412,6 @@ export default function AIPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </AIErrorBoundary>
   );
 }
