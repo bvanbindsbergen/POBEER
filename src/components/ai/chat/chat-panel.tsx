@@ -141,15 +141,19 @@ export function ChatPanel({ onStrategyAction }: ChatPanelProps) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n\n");
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        // Keep the last part as it may be incomplete
+        buffer = parts.pop() || "";
 
-        for (const line of lines) {
+        for (const part of parts) {
+          const line = part.trim();
           if (!line.startsWith("data: ")) continue;
           try {
             const event: StreamEvent = JSON.parse(line.slice(6));
@@ -159,13 +163,6 @@ export function ChatPanel({ onStrategyAction }: ChatPanelProps) {
               setStreamingContent(fullContent);
             } else if (event.type === "tool_call" || event.type === "tool_result") {
               setToolEvents((prev) => [...prev, event]);
-              if (event.type === "tool_result") {
-                // Reset content accumulator for post-tool text
-                fullContent = "";
-                setStreamingContent("");
-              }
-            } else if (event.type === "done") {
-              // Done
             } else if (event.type === "error") {
               console.error("Stream error:", event.message);
             }
@@ -291,10 +288,10 @@ export function ChatPanel({ onStrategyAction }: ChatPanelProps) {
                 <MessageBubble role="assistant" content={streamingContent} />
               )}
 
-              {isStreaming && !streamingContent && toolEvents.length === 0 && (
+              {isStreaming && !streamingContent && (
                 <div className="flex items-center gap-2 text-xs text-slate-500 ml-10">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                  Thinking...
+                  {toolEvents.length > 0 ? "Analyzing results..." : "Thinking..."}
                 </div>
               )}
 

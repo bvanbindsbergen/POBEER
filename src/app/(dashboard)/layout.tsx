@@ -21,11 +21,13 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
   { href: "/funds", label: "Funds", icon: Wallet },
-  { href: "/ai", label: "AI Assistant", icon: Brain },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const adminNavItem = { href: "/admin", label: "Admin", icon: Shield };
+const leaderNavItems = [
+  { href: "/ai", label: "AI Assistant", icon: Brain },
+  { href: "/admin", label: "Admin", icon: Shield },
+];
 
 export default function DashboardLayout({
   children,
@@ -73,7 +75,7 @@ export default function DashboardLayout({
     icon: Rocket,
   };
   const allNavItems = isLeader
-    ? [...navItems, adminNavItem]
+    ? [...navItems, ...leaderNavItems]
     : showOnboarding
       ? [onboardingNavItem, ...navItems]
       : navItems;

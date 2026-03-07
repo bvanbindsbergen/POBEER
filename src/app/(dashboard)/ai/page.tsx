@@ -7,6 +7,7 @@ import { ChatPanel } from "@/components/ai/chat/chat-panel";
 import { BacktestConfig } from "@/components/ai/backtest/backtest-config";
 import { BacktestResults } from "@/components/ai/backtest/backtest-results";
 import { BacktestList } from "@/components/ai/backtest/backtest-list";
+import { StrategyDiscovery } from "@/components/ai/strategy-discovery";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +16,7 @@ import {
   Lightbulb,
   Trash2,
   Brain,
+  ShieldAlert,
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 
@@ -31,6 +33,18 @@ export default function AIPage() {
   } | null>(null);
   const queryClient = useQueryClient();
 
+  // Check if user is leader
+  const { data: authData, isLoading: authLoading } = useQuery({
+    queryKey: ["auth"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/me");
+      if (!res.ok) throw new Error("Not authenticated");
+      return res.json();
+    },
+  });
+
+  const isLeader = authData?.user?.role === "leader";
+
   // Run backtest mutation
   const runBacktest = useMutation({
     mutationFn: async (config: {
@@ -40,7 +54,6 @@ export default function AIPage() {
       endDate: string;
       strategyConfig: StrategyConfig;
     }) => {
-      // Also fetch candles for chart
       const [btRes, candleRes] = await Promise.all([
         fetch("/api/ai/backtest", {
           method: "POST",
@@ -83,6 +96,7 @@ export default function AIPage() {
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
+    enabled: isLeader,
   });
   const strategies = stratData?.strategies || [];
 
@@ -104,7 +118,6 @@ export default function AIPage() {
       const data = await res.json();
       setBacktestResult(data.backtest);
 
-      // Fetch candles
       if (data.backtest.symbol && data.backtest.timeframe) {
         const days = Math.ceil(
           (new Date(data.backtest.endDate).getTime() -
@@ -119,6 +132,19 @@ export default function AIPage() {
           setBacktestCandles(cData.candles);
         }
       }
+    },
+    []
+  );
+
+  // Handle backtest from discovery
+  const handleDiscoveryBacktest = useCallback(
+    (strategy: { symbol: string; timeframe: string; strategyConfig: unknown }) => {
+      setPrefillConfig({
+        strategyConfig: strategy.strategyConfig as StrategyConfig,
+        symbol: strategy.symbol,
+        timeframe: strategy.timeframe,
+      });
+      setActiveTab("backtests");
     },
     []
   );
@@ -139,6 +165,30 @@ export default function AIPage() {
     []
   );
 
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="w-5 h-5 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Only leaders can access AI assistant
+  if (!isLeader) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-3 rounded-2xl bg-amber-500/10 mb-4">
+          <ShieldAlert className="w-8 h-8 text-amber-400" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-200 mb-2">Leader Only</h2>
+        <p className="text-sm text-slate-500 max-w-md">
+          The AI Trading Assistant is available to the lead trader only.
+          Contact your group admin for access.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header */}
@@ -153,6 +203,9 @@ export default function AIPage() {
           </p>
         </div>
       </div>
+
+      {/* Auto-generated Strategy Ideas */}
+      <StrategyDiscovery onBacktest={handleDiscoveryBacktest} />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -201,7 +254,7 @@ export default function AIPage() {
                 No Saved Strategies
               </h3>
               <p className="text-sm text-slate-500 max-w-md mx-auto">
-                Chat with the AI to discover strategies, then save the ones you like.
+                Save strategies from the AI-generated ideas above, or chat with the AI to discover more.
               </p>
               <Button
                 onClick={() => setActiveTab("chat")}
