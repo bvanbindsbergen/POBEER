@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { PriceChart } from "../charts/price-chart";
 import { EquityChart } from "../charts/equity-chart";
-import type { Trade, EquityPoint } from "@/lib/ai/backtest/types";
+import type { Trade, EquityPoint, WalkForwardResult } from "@/lib/ai/backtest/types";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Activity, BarChart3, Target, Hash, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, BarChart3, Target, Hash, Zap, Shield, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 
 interface BacktestResultsProps {
   result: {
@@ -33,9 +34,12 @@ interface BacktestResultsProps {
     winRate?: number | string;
     sharpeRatio?: number | string;
   }) => void;
+  walkForwardResult?: WalkForwardResult | null;
+  walkForwardLoading?: boolean;
 }
 
-export function BacktestResults({ result, candles, onActivate }: BacktestResultsProps) {
+export function BacktestResults({ result, candles, onActivate, walkForwardResult, walkForwardLoading }: BacktestResultsProps) {
+  const [wfExpanded, setWfExpanded] = useState(false);
   const trades: Trade[] = typeof result.trades === "string"
     ? JSON.parse(result.trades || "[]")
     : result.trades || [];
@@ -133,6 +137,128 @@ export function BacktestResults({ result, candles, onActivate }: BacktestResults
             Equity Curve
           </h4>
           <EquityChart equityCurve={equityCurve} height={220} />
+        </div>
+      )}
+
+      {/* Robustness Analysis (Walk-Forward) */}
+      {walkForwardLoading && (
+        <div className="rounded-lg bg-[#111827] border border-white/[0.06] p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+            <span className="text-sm text-slate-400">Validating strategy robustness...</span>
+          </div>
+        </div>
+      )}
+
+      {walkForwardResult && walkForwardResult.windows.length > 0 && (
+        <div className="rounded-lg bg-[#111827] border border-white/[0.06] p-4 space-y-3">
+          {/* Header with verdict badge */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-medium text-slate-300">Robustness Score</h4>
+              <span className="text-[10px] text-slate-600">Tested on {walkForwardResult.windows.length} unseen data windows</span>
+            </div>
+            {(() => {
+              const cr = walkForwardResult.consistencyRatio;
+              const profitable = walkForwardResult.windows.filter(w => w.outOfSampleResult.totalPnl > 0).length;
+              if (cr >= 0.6) return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Shield className="w-3.5 h-3.5" />
+                  Robust ({profitable}/{walkForwardResult.windows.length} profitable)
+                </div>
+              );
+              if (cr >= 0.4) return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Suspect ({profitable}/{walkForwardResult.windows.length} profitable)
+                </div>
+              );
+              return (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Overfit ({profitable}/{walkForwardResult.windows.length} profitable)
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Summary metrics row */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
+              <p className="text-[10px] text-slate-500">Consistency</p>
+              <p className={`text-sm font-bold ${walkForwardResult.consistencyRatio >= 0.6 ? "text-emerald-400" : walkForwardResult.consistencyRatio >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
+                {(walkForwardResult.consistencyRatio * 100).toFixed(0)}%
+              </p>
+            </div>
+            <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
+              <p className="text-[10px] text-slate-500">Degradation</p>
+              <p className={`text-sm font-bold ${walkForwardResult.degradationRatio >= 0.7 ? "text-emerald-400" : walkForwardResult.degradationRatio >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
+                {(walkForwardResult.degradationRatio * 100).toFixed(0)}%
+              </p>
+            </div>
+            <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
+              <p className="text-[10px] text-slate-500">Avg OOS Sharpe</p>
+              <p className={`text-sm font-bold ${walkForwardResult.oosSharpe >= 1 ? "text-emerald-400" : walkForwardResult.oosSharpe >= 0 ? "text-amber-400" : "text-red-400"}`}>
+                {walkForwardResult.oosSharpe.toFixed(2)}
+              </p>
+            </div>
+            <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
+              <p className="text-[10px] text-slate-500">Avg OOS P&L</p>
+              <p className={`text-sm font-bold ${walkForwardResult.oosAveragePnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {walkForwardResult.oosAveragePnl >= 0 ? "+" : ""}{walkForwardResult.oosAveragePnl.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Expandable window details */}
+          <button
+            onClick={() => setWfExpanded(!wfExpanded)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {wfExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {wfExpanded ? "Hide" : "Show"} window details
+          </button>
+
+          {wfExpanded && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-500 border-b border-white/[0.06]">
+                    <th className="text-left py-2 pr-3 font-medium">Window</th>
+                    <th className="text-right py-2 px-3 font-medium">IS P&L</th>
+                    <th className="text-right py-2 px-3 font-medium">OOS P&L</th>
+                    <th className="text-right py-2 px-3 font-medium">IS Sharpe</th>
+                    <th className="text-right py-2 px-3 font-medium">OOS Sharpe</th>
+                    <th className="text-right py-2 px-3 font-medium">IS Trades</th>
+                    <th className="text-right py-2 pl-3 font-medium">OOS Trades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {walkForwardResult.windows.map((w) => {
+                    const oosPositive = w.outOfSampleResult.totalPnl > 0;
+                    return (
+                      <tr
+                        key={w.windowIndex}
+                        className={`border-b border-white/[0.03] ${oosPositive ? "bg-emerald-500/[0.03]" : "bg-red-500/[0.03]"}`}
+                      >
+                        <td className="py-2 pr-3 text-slate-300 font-medium">#{w.windowIndex + 1}</td>
+                        <td className={`text-right py-2 px-3 ${w.inSampleResult.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {w.inSampleResult.totalPnl >= 0 ? "+" : ""}{w.inSampleResult.totalPnl.toFixed(2)}%
+                        </td>
+                        <td className={`text-right py-2 px-3 font-medium ${oosPositive ? "text-emerald-400" : "text-red-400"}`}>
+                          {w.outOfSampleResult.totalPnl >= 0 ? "+" : ""}{w.outOfSampleResult.totalPnl.toFixed(2)}%
+                        </td>
+                        <td className="text-right py-2 px-3 text-slate-400">{w.inSampleResult.sharpeRatio.toFixed(2)}</td>
+                        <td className="text-right py-2 px-3 text-slate-400">{w.outOfSampleResult.sharpeRatio.toFixed(2)}</td>
+                        <td className="text-right py-2 px-3 text-slate-400">{w.inSampleResult.totalTrades}</td>
+                        <td className="text-right py-2 pl-3 text-slate-400">{w.outOfSampleResult.totalTrades}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

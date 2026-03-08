@@ -12,7 +12,6 @@ import { ActivateStrategyModal } from "@/components/ai/activate-strategy-modal";
 import { OperationalDashboard } from "@/components/ai/operational-dashboard";
 import { PumpScreener } from "@/components/ai/pump-screener";
 import { MarketScanner } from "@/components/ai/market-scanner";
-import { WalkForwardResults } from "@/components/ai/walk-forward-results";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,10 +24,10 @@ import {
   Zap,
   Radar,
   Flame,
-  Shield,
   Grid3x3,
 } from "lucide-react";
-import type { StrategyConfig, WalkForwardResult } from "@/lib/ai/backtest/types";
+import type { StrategyConfig } from "@/lib/ai/backtest/types";
+import type { WalkForwardResult } from "@/lib/ai/backtest/types";
 import { GridDashboard } from "@/components/grid/grid-dashboard";
 import { GridStrategyForm } from "@/components/grid/grid-strategy-form";
 
@@ -92,6 +91,7 @@ export default function AIPage() {
     sharpeRatio?: number | string;
   } | null>(null);
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
+  const [walkForwardLoading, setWalkForwardLoading] = useState(false);
   const queryClient = useQueryClient();
 
   // Check if user is leader
@@ -106,7 +106,7 @@ export default function AIPage() {
 
   const isLeader = authData?.user?.role === "leader";
 
-  // Run backtest mutation
+  // Run backtest mutation (also kicks off walk-forward in parallel)
   const runBacktest = useMutation({
     mutationFn: async (config: {
       symbol: string;
@@ -115,6 +115,11 @@ export default function AIPage() {
       endDate: string;
       strategyConfig: StrategyConfig;
     }) => {
+      const days = Math.ceil(
+        (new Date(config.endDate).getTime() - new Date(config.startDate).getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
       const [btRes, candleRes] = await Promise.all([
         fetch("/api/ai/backtest", {
           method: "POST",
@@ -122,12 +127,7 @@ export default function AIPage() {
           body: JSON.stringify(config),
         }),
         fetch(
-          `/api/ai/market/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${config.timeframe}&days=${
-            Math.ceil(
-              (new Date(config.endDate).getTime() - new Date(config.startDate).getTime()) /
-                (1000 * 60 * 60 * 24)
-            )
-          }`
+          `/api/ai/market/candles?symbol=${encodeURIComponent(config.symbol)}&timeframe=${config.timeframe}&days=${days}`
         ),
       ]);
 
@@ -139,6 +139,24 @@ export default function AIPage() {
         const candleData = await candleRes.json();
         candles = candleData.candles;
       }
+
+      // Fire walk-forward in the background (non-blocking)
+      setWalkForwardResult(null);
+      setWalkForwardLoading(true);
+      fetch("/api/ai/backtest/walk-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: config.symbol,
+          timeframe: config.timeframe,
+          days,
+          strategyConfig: config.strategyConfig,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => { if (data?.result) setWalkForwardResult(data.result); })
+        .catch(() => {})
+        .finally(() => setWalkForwardLoading(false));
 
       return { backtest: btData.backtest, candles };
     },
@@ -183,28 +201,6 @@ export default function AIPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
-    },
-  });
-
-  // Walk-forward mutation
-  const runWalkForward = useMutation({
-    mutationFn: async (params: {
-      symbol: string;
-      timeframe: string;
-      days: number;
-      strategyConfig: StrategyConfig;
-    }) => {
-      const res = await fetch("/api/ai/backtest/walk-forward", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      });
-      if (!res.ok) throw new Error("Walk-forward failed");
-      const data = await res.json();
-      return data.result as WalkForwardResult;
-    },
-    onSuccess: (data) => {
-      setWalkForwardResult(data);
     },
   });
 
@@ -458,24 +454,6 @@ export default function AIPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            setWalkForwardResult(null);
-                            runWalkForward.mutate({
-                              symbol: s.symbol,
-                              timeframe: s.timeframe,
-                              days: 90,
-                              strategyConfig: config,
-                            });
-                          }}
-                          disabled={runWalkForward.isPending}
-                          className="h-7 text-xs border-purple-500/20 text-purple-400 hover:bg-purple-500/10"
-                        >
-                          <Shield className="w-3 h-3 mr-1" />
-                          Walk-Forward
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
                           onClick={() =>
                             setActivateSource({
                               id: s.id,
@@ -502,21 +480,6 @@ export default function AIPage() {
             </div>
           )}
 
-          {/* Walk-Forward Results */}
-          {(runWalkForward.isPending || walkForwardResult) && (
-            <div className="mt-4">
-              <WalkForwardResults
-                result={walkForwardResult}
-                isLoading={runWalkForward.isPending}
-              />
-            </div>
-          )}
-
-          {runWalkForward.isError && (
-            <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
-              Walk-forward analysis failed. Please try again.
-            </div>
-          )}
         </TabsContent>
 
         {/* Backtests Tab */}
@@ -545,6 +508,8 @@ export default function AIPage() {
               result={backtestResult as Parameters<typeof BacktestResults>[0]["result"]}
               candles={backtestCandles}
               onActivate={(source) => setActivateSource(source)}
+              walkForwardResult={walkForwardResult}
+              walkForwardLoading={walkForwardLoading}
             />
           )}
 
