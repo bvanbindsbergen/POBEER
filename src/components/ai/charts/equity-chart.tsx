@@ -38,7 +38,11 @@ export function EquityChart({ equityCurve, height = 250 }: EquityChartProps) {
     chart.timeScale().fitContent();
 
     return () => {
-      chart.removeSeries(lineSeries);
+      try {
+        chart.removeSeries(lineSeries);
+      } catch {
+        // Chart may already be destroyed by useChart cleanup
+      }
     };
   }, [equityCurve, chartRef]);
 

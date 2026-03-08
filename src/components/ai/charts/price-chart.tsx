@@ -91,8 +91,12 @@ export function PriceChart({ candles, trades, height = 400 }: PriceChartProps) {
     chart.timeScale().fitContent();
 
     return () => {
-      chart.removeSeries(candleSeries);
-      chart.removeSeries(volumeSeries);
+      try {
+        chart.removeSeries(candleSeries);
+        chart.removeSeries(volumeSeries);
+      } catch {
+        // Chart may already be destroyed by useChart cleanup
+      }
     };
   }, [candles, trades, chartRef]);
 
