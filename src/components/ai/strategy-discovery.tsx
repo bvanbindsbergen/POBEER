@@ -13,6 +13,10 @@ import {
   Shield,
   Flame,
   Loader2,
+  ThumbsUp,
+  ThumbsDown,
+  X,
+  Send,
 } from "lucide-react";
 
 interface DiscoveredStrategy {
@@ -59,6 +63,10 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
   });
 
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
+  const [feedbackIndex, setFeedbackIndex] = useState<number | null>(null);
+  const [feedbackAction, setFeedbackAction] = useState<"approved" | "declined">("declined");
+  const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackedIds, setFeedbackedIds] = useState<Map<number, "approved" | "declined">>(new Map());
 
   const saveStrategy = useMutation({
     mutationFn: async ({ strategy, index }: { strategy: DiscoveredStrategy; index: number }) => {
@@ -82,6 +90,40 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
     onSuccess: (data) => {
       setSavedIds((prev) => new Set(prev).add(data.index));
       queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
+    },
+  });
+
+  const submitFeedback = useMutation({
+    mutationFn: async ({
+      strategy,
+      index,
+      action,
+      reason,
+    }: {
+      strategy: DiscoveredStrategy;
+      index: number;
+      action: "approved" | "declined";
+      reason: string;
+    }) => {
+      const res = await fetch("/api/ai/discover/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          strategyName: strategy.name,
+          symbol: strategy.symbol,
+          timeframe: strategy.timeframe,
+          action,
+          reason: reason || undefined,
+          strategyConfig: strategy.strategyConfig,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to submit feedback");
+      return { index, action };
+    },
+    onSuccess: ({ index, action }) => {
+      setFeedbackedIds((prev) => new Map(prev).set(index, action));
+      setFeedbackIndex(null);
+      setFeedbackReason("");
     },
   });
 
@@ -225,32 +267,109 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
                   )}
                 </div>
 
+                {/* Feedback status */}
+                {feedbackedIds.has(i) && (
+                  <div className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium flex items-center gap-1.5 ${
+                    feedbackedIds.get(i) === "approved"
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-red-500/10 text-red-400"
+                  }`}>
+                    {feedbackedIds.get(i) === "approved" ? (
+                      <><ThumbsUp className="w-3 h-3" /> Approved</>
+                    ) : (
+                      <><ThumbsDown className="w-3 h-3" /> Declined</>
+                    )}
+                  </div>
+                )}
+
+                {/* Inline feedback form */}
+                {feedbackIndex === i && (
+                  <div className="rounded-lg bg-[#0a0f1a] border border-white/[0.08] p-2.5 space-y-2">
+                    <textarea
+                      value={feedbackReason}
+                      onChange={(e) => setFeedbackReason(e.target.value)}
+                      placeholder={feedbackAction === "declined"
+                        ? "Why decline? e.g. 'too risky', 'prefer BTC over alts', 'RSI strategy doesn't work for me'..."
+                        : "Any notes? e.g. 'love momentum strategies', 'good risk/reward'..."
+                      }
+                      rows={2}
+                      className="w-full rounded bg-[#111827] border border-white/[0.08] px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-white/[0.15] focus:outline-none resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => submitFeedback.mutate({
+                          strategy: s,
+                          index: i,
+                          action: feedbackAction,
+                          reason: feedbackReason,
+                        })}
+                        disabled={submitFeedback.isPending}
+                        className={`h-6 text-[11px] flex-1 ${
+                          feedbackAction === "approved"
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            : "bg-red-600 hover:bg-red-700 text-white"
+                        }`}
+                      >
+                        <Send className="w-3 h-3 mr-1" />
+                        Submit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setFeedbackIndex(null); setFeedbackReason(""); }}
+                        className="h-6 text-[11px] text-slate-500 hover:text-slate-300 px-2"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onBacktest(s)}
-                    className="h-7 text-xs flex-1 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10"
-                  >
-                    <FlaskConical className="w-3 h-3 mr-1" />
-                    Backtest
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => saveStrategy.mutate({ strategy: s, index: i })}
-                    disabled={saveStrategy.isPending || savedIds.has(i)}
-                    className={`h-7 text-xs ${
-                      savedIds.has(i)
-                        ? "border-emerald-500/30 text-emerald-500 opacity-60"
-                        : "border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
-                    }`}
-                  >
-                    <Bookmark className="w-3 h-3 mr-1" />
-                    {savedIds.has(i) ? "Saved" : "Save"}
-                  </Button>
-                </div>
+                {!feedbackedIds.has(i) && feedbackIndex !== i && (
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setFeedbackAction("approved");
+                        setFeedbackIndex(i);
+                        setFeedbackReason("");
+                        // Also save the strategy on approve
+                        if (!savedIds.has(i)) {
+                          saveStrategy.mutate({ strategy: s, index: i });
+                        }
+                      }}
+                      className="h-7 text-xs border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
+                    >
+                      <ThumbsUp className="w-3 h-3 mr-1" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setFeedbackAction("declined");
+                        setFeedbackIndex(i);
+                        setFeedbackReason("");
+                      }}
+                      className="h-7 text-xs border-red-500/20 text-red-400 hover:bg-red-500/10"
+                    >
+                      <ThumbsDown className="w-3 h-3 mr-1" />
+                      Decline
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onBacktest(s)}
+                      className="h-7 text-xs border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10"
+                    >
+                      <FlaskConical className="w-3 h-3 mr-1" />
+                      Backtest
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}

@@ -8,6 +8,13 @@
       "when": 1772923336190,
       "tag": "0000_charming_wallow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772956110844,
+      "tag": "0001_outgoing_celestials",
+      "breakpoints": true
     }
   ]
 }

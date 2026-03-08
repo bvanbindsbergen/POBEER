@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { newsCache } from "@/lib/db/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { newsCache, strategyFeedback } from "@/lib/db/schema";
+import { and, eq, gt, desc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { fetchMarketOverview } from "@/lib/ai/data/market";
 import { fetchCryptoNews } from "@/lib/ai/data/news";
@@ -78,6 +78,25 @@ export async function GET() {
 
     const client = new Anthropic({ apiKey });
 
+    // Load recent user feedback (last 20 approve/decline actions)
+    const recentFeedback = await db
+      .select({
+        strategyName: strategyFeedback.strategyName,
+        symbol: strategyFeedback.symbol,
+        action: strategyFeedback.action,
+        reason: strategyFeedback.reason,
+      })
+      .from(strategyFeedback)
+      .where(eq(strategyFeedback.userId, auth.user.id))
+      .orderBy(desc(strategyFeedback.createdAt))
+      .limit(20);
+
+    const feedbackStr = recentFeedback.length > 0
+      ? `\n\nUSER PREFERENCE HISTORY (learn from these approve/decline decisions):\n${recentFeedback.map(
+          (f) => `- ${f.action.toUpperCase()}: "${f.strategyName}" (${f.symbol})${f.reason ? ` — Reason: ${f.reason}` : ""}`
+        ).join("\n")}`
+      : "";
+
     const contextStr = JSON.stringify({
       marketOverview: {
         trending: overview.trending.slice(0, 5).map((c) => `${c.symbol} (rank #${c.marketCapRank})`),
@@ -99,6 +118,7 @@ export async function GET() {
         {
           role: "user",
           content: `Based on the current market data below, suggest exactly 3 short-term trading strategies. Each strategy should be actionable for the next 1-7 days.
+${feedbackStr}${feedbackStr ? "\n\nIMPORTANT: Factor in the user's preference history above. Avoid strategies similar to declined ones (especially when a reason is given). Lean toward patterns and styles the user has approved." : ""}
 
 CURRENT MARKET DATA:
 ${contextStr}

@@ -482,6 +482,21 @@ export const operationalStrategyTrades = pgTable("operational_strategy_trades", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Strategy Idea Feedback (approve/decline with context)
+export const strategyFeedback = pgTable("strategy_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  strategyName: varchar("strategy_name", { length: 255 }).notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  timeframe: varchar("timeframe", { length: 10 }).notNull(),
+  action: varchar("action", { length: 10 }).notNull(), // "approved" or "declined"
+  reason: text("reason"), // user-provided context
+  strategyConfig: text("strategy_config"), // JSON snapshot of the idea
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Strategy Equity Snapshots (daily snapshots for portfolio analytics)
 export const strategyEquitySnapshots = pgTable("strategy_equity_snapshots", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -559,3 +574,4 @@ export type OperationalStrategyTrade = typeof operationalStrategyTrades.$inferSe
 export type StrategyEquitySnapshot = typeof strategyEquitySnapshots.$inferSelect;
 export type GridStrategy = typeof gridStrategies.$inferSelect;
 export type GridOrder = typeof gridOrders.$inferSelect;
+export type StrategyFeedback = typeof strategyFeedback.$inferSelect;
