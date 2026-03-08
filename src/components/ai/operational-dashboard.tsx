@@ -301,10 +301,21 @@ function StrategyCard({
             <Badge variant="outline" className="text-[10px]">{s.timeframe}</Badge>
           </div>
         </div>
-        <Badge className={`text-[10px] border ${statusColors[s.status]}`}>
-          {s.status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1" />}
-          {s.status}
-        </Badge>
+        <div className="flex gap-1 items-center">
+          {s.mode === "paper" ? (
+            <Badge className="text-[10px] border bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+              PAPER
+            </Badge>
+          ) : (
+            <Badge className="text-[10px] border bg-amber-500/10 text-amber-400 border-amber-500/20">
+              LIVE
+            </Badge>
+          )}
+          <Badge className={`text-[10px] border ${statusColors[s.status]}`}>
+            {s.status === "active" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1" />}
+            {s.status}
+          </Badge>
+        </div>
       </div>
 
       {/* Fund allocation */}

@@ -8,10 +8,12 @@ import { PositionTracker } from "./position-tracker";
 import { FeeCalculator } from "./fee-calculator";
 import { Reconciler } from "./reconciler";
 import { BalanceSnapshotJob } from "./balance-snapshot";
+import { EquitySnapshotJob } from "./equity-snapshot-job";
 import { InvoiceGenerator } from "./invoice-generator";
 import { TransferTracker } from "./transfer-tracker";
 import { PendingTradeExpirer } from "./pending-trade-expirer";
 import { StrategyExecutor } from "./strategy-executor";
+import { GridExecutor } from "./grid-executor";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
 const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
@@ -23,10 +25,12 @@ class Worker {
   private feeCalculator: FeeCalculator;
   private reconciler: Reconciler;
   private balanceSnapshotJob: BalanceSnapshotJob;
+  private equitySnapshotJob: EquitySnapshotJob;
   private invoiceGenerator: InvoiceGenerator;
   private transferTracker: TransferTracker;
   private pendingTradeExpirer: PendingTradeExpirer;
   private strategyExecutor: StrategyExecutor;
+  private gridExecutor: GridExecutor;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private expirerTimer: NodeJS.Timeout | null = null;
@@ -45,10 +49,12 @@ class Worker {
       this.feeCalculator
     );
     this.balanceSnapshotJob = new BalanceSnapshotJob();
+    this.equitySnapshotJob = new EquitySnapshotJob();
     this.invoiceGenerator = new InvoiceGenerator();
     this.transferTracker = new TransferTracker();
     this.pendingTradeExpirer = new PendingTradeExpirer();
     this.strategyExecutor = new StrategyExecutor();
+    this.gridExecutor = new GridExecutor();
   }
 
   async start() {
@@ -94,6 +100,9 @@ class Worker {
     // Start strategy executor for auto-trading
     this.strategyExecutor.start(leader);
 
+    // Start grid executor for grid trading bots
+    this.gridExecutor.start(leader);
+
     console.log("[Worker] Starting leader order watcher...");
     await this.leaderWatcher.start();
   }
@@ -129,6 +138,15 @@ class Worker {
         }
       } catch (err) {
         console.error("[Worker] Balance snapshot job error:", err);
+      }
+
+      try {
+        if (await this.equitySnapshotJob.shouldRun()) {
+          console.log("[Worker] Running daily equity snapshot...");
+          await this.equitySnapshotJob.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Equity snapshot job error:", err);
       }
 
       try {
@@ -182,6 +200,7 @@ class Worker {
     }
 
     this.strategyExecutor.stop();
+    this.gridExecutor.stop();
 
     if (this.leaderWatcher) {
       await this.leaderWatcher.stop();

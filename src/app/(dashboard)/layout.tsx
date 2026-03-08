@@ -14,6 +14,7 @@ import {
   Rocket,
   Wallet,
   Brain,
+  BarChart3,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import type { LucideIcon } from "lucide-react";
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
   { href: "/funds", label: "Funds", icon: Wallet },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Zap, AlertTriangle, Loader2, DollarSign, Percent, Shield, ShieldCheck, ShieldAlert, Flame } from "lucide-react";
+import { Zap, AlertTriangle, Loader2, DollarSign, Percent, Shield, ShieldCheck, ShieldAlert, Flame, FileText, Radio } from "lucide-react";
 
 interface ActivateStrategyModalProps {
   open: boolean;
@@ -36,6 +36,7 @@ export function ActivateStrategyModal({
   onOpenChange,
   source,
 }: ActivateStrategyModalProps) {
+  const [tradingMode, setTradingMode] = useState<"live" | "paper">("live");
   const [maxCapUsd, setMaxCapUsd] = useState(500);
   const [maxCapPercent, setMaxCapPercent] = useState(10);
   const [dailyLossLimitUsd, setDailyLossLimitUsd] = useState(100);
@@ -52,6 +53,7 @@ export function ActivateStrategyModal({
           maxCapPercent,
           dailyLossLimitUsd,
           sourceType: source.sourceType,
+          mode: tradingMode,
         }),
       });
       if (!res.ok) {
@@ -92,9 +94,52 @@ export function ActivateStrategyModal({
             Activate Strategy
           </DialogTitle>
           <DialogDescription className="text-slate-500">
-            Deploy this strategy for live auto-trading on ByBit
+            Deploy this strategy for {tradingMode === "paper" ? "paper trading" : "live auto-trading"} on ByBit
           </DialogDescription>
         </DialogHeader>
+
+        {/* Paper / Live Toggle */}
+        <div className="space-y-1.5">
+          <label className="text-xs text-slate-400">Trading Mode</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setTradingMode("paper")}
+              className={`rounded-lg border p-2.5 text-center transition-colors ${
+                tradingMode === "paper"
+                  ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400"
+                  : "bg-[#111827] border-white/[0.06] text-slate-400 hover:border-white/[0.12]"
+              }`}
+            >
+              <FileText className="w-4 h-4 mx-auto mb-1" />
+              <div className="text-[11px] font-medium">Paper</div>
+              <div className="text-[9px] text-slate-500">Virtual funds</div>
+            </button>
+            <button
+              onClick={() => setTradingMode("live")}
+              className={`rounded-lg border p-2.5 text-center transition-colors ${
+                tradingMode === "live"
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  : "bg-[#111827] border-white/[0.06] text-slate-400 hover:border-white/[0.12]"
+              }`}
+            >
+              <Radio className="w-4 h-4 mx-auto mb-1" />
+              <div className="text-[11px] font-medium">Live</div>
+              <div className="text-[9px] text-slate-500">Real orders</div>
+            </button>
+          </div>
+        </div>
+
+        {/* Paper mode info */}
+        {tradingMode === "paper" && (
+          <div className="rounded-lg bg-cyan-500/5 border border-cyan-500/10 p-2.5 text-[11px] text-cyan-400/80">
+            <div className="flex items-start gap-1.5">
+              <FileText className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <div>
+                Paper mode uses virtual funds — no real orders placed. Great for testing strategies before going live.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Strategy Summary */}
         <div className="rounded-lg bg-[#111827] border border-white/[0.06] p-3 space-y-2">

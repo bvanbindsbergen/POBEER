@@ -126,3 +126,41 @@ export async function placeMarketOrder(
     status: String(order.status),
   };
 }
+
+export async function placeLimitOrder(
+  exchange: InstanceType<typeof ccxt.bybit>,
+  symbol: string,
+  side: "buy" | "sell",
+  amount: number,
+  price: number
+): Promise<OrderResult> {
+  const order = await exchange.createOrder(symbol, "limit", side, amount, price);
+  return {
+    id: String(order.id),
+    symbol: String(order.symbol),
+    side: String(order.side),
+    amount: Number(order.amount),
+    price: order.price != null ? Number(order.price) : undefined,
+    average: order.average != null ? Number(order.average) : undefined,
+    filled: Number(order.filled),
+    status: String(order.status),
+  };
+}
+
+export async function fetchOrderStatus(
+  exchange: InstanceType<typeof ccxt.bybit>,
+  orderId: string,
+  symbol: string
+): Promise<OrderResult> {
+  const order = await exchange.fetchOrder(orderId, symbol);
+  return {
+    id: String(order.id),
+    symbol: String(order.symbol),
+    side: String(order.side),
+    amount: Number(order.amount),
+    price: order.price != null ? Number(order.price) : undefined,
+    average: order.average != null ? Number(order.average) : undefined,
+    filled: Number(order.filled),
+    status: String(order.status),
+  };
+}

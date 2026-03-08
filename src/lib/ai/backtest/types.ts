@@ -14,6 +14,7 @@ export interface StrategyConfig {
   exitConditions: Condition[];
   stopLossPercent?: number;
   takeProfitPercent?: number;
+  takeProfitLevels?: TakeProfitLevel[];  // multi-level TP (overrides takeProfitPercent)
   trailingStopPercent?: number; // exit when price drops X% from highest since entry
   positionSizePercent: number; // % of equity per trade
   dcaEnabled?: boolean;
@@ -51,4 +52,24 @@ export interface BacktestResult {
   maxConsecutiveLosses: number;
   trades: Trade[];
   equityCurve: EquityPoint[];
+}
+
+export interface TakeProfitLevel {
+  percent: number;      // e.g., 3 = exit at +3%
+  sellPercent: number;  // e.g., 30 = sell 30% of position
+}
+
+export interface WalkForwardWindow {
+  windowIndex: number;
+  inSampleResult: BacktestResult;
+  outOfSampleResult: BacktestResult;
+}
+
+export interface WalkForwardResult {
+  windows: WalkForwardWindow[];
+  oosAveragePnl: number;
+  oosSharpe: number;
+  oosWinRate: number;
+  consistencyRatio: number;  // % of OOS windows that are profitable
+  degradationRatio: number;  // avg OOS performance / avg IS performance
 }

@@ -34,8 +34,13 @@ export function runBacktest(
   let entryPrice = 0;
   let entryIndex = 0;
   let positionSize = 0;
+  let remainingSize = 0;
+  let tpFilled = 0;
+  let partialPnlLocked = 0; // accumulated PnL from partial exits within current trade
   const trades: Trade[] = [];
   const equityCurve: EquityPoint[] = [{ timestamp: candles[0].timestamp, equity }];
+
+  const DUST_THRESHOLD = 0.01; // min remaining size in USD terms
 
   for (let i = 1; i < candles.length; i++) {
     const candle = candles[i];
@@ -45,9 +50,39 @@ export function runBacktest(
       const pnlPercent = ((candle.close - entryPrice) / entryPrice) * 100;
 
       if (config.stopLossPercent && pnlPercent <= -config.stopLossPercent) {
-        equity += positionSize * (-config.stopLossPercent / 100);
-        trades.push(makeTrade(entryIndex, i, candles, entryPrice, entryPrice * (1 - config.stopLossPercent / 100), positionSize));
+        const exitPnl = remainingSize * (-config.stopLossPercent / 100) + partialPnlLocked;
+        equity += exitPnl;
+        trades.push(makeTrade(entryIndex, i, candles, entryPrice, entryPrice * (1 - config.stopLossPercent / 100), positionSize, exitPnl));
         inPosition = false;
+        partialPnlLocked = 0;
+      } else if (config.takeProfitLevels?.length) {
+        // Multi-target take profit
+        const nextLevel = config.takeProfitLevels[tpFilled];
+        if (nextLevel && pnlPercent >= nextLevel.percent) {
+          const sellAmount = positionSize * (nextLevel.sellPercent / 100);
+          const levelPnl = sellAmount * (pnlPercent / 100);
+          partialPnlLocked += levelPnl;
+          remainingSize -= sellAmount;
+          tpFilled++;
+
+          // If dust remaining, close fully
+          if (remainingSize < DUST_THRESHOLD) {
+            equity += partialPnlLocked;
+            const avgExitPrice = entryPrice * (1 + pnlPercent / 100);
+            trades.push(makeTrade(entryIndex, i, candles, entryPrice, avgExitPrice, positionSize, partialPnlLocked));
+            inPosition = false;
+            partialPnlLocked = 0;
+          }
+        } else if (checkConditions(config.exitConditions, i, indicatorCache)) {
+          // Exit signal closes remaining position
+          const exitPrice = candle.close;
+          const remainingPnl = remainingSize * ((exitPrice - entryPrice) / entryPrice);
+          const totalPnl = partialPnlLocked + remainingPnl;
+          equity += totalPnl;
+          trades.push(makeTrade(entryIndex, i, candles, entryPrice, exitPrice, positionSize, totalPnl));
+          inPosition = false;
+          partialPnlLocked = 0;
+        }
       } else if (config.takeProfitPercent && pnlPercent >= config.takeProfitPercent) {
         equity += positionSize * (config.takeProfitPercent / 100);
         trades.push(makeTrade(entryIndex, i, candles, entryPrice, entryPrice * (1 + config.takeProfitPercent / 100), positionSize));
@@ -66,12 +101,15 @@ export function runBacktest(
         entryPrice = candle.close;
         entryIndex = i;
         positionSize = equity * (config.positionSizePercent / 100);
+        remainingSize = positionSize;
+        tpFilled = 0;
+        partialPnlLocked = 0;
       }
     }
 
     // Track equity
     if (inPosition) {
-      const unrealized = positionSize * ((candle.close - entryPrice) / entryPrice);
+      const unrealized = remainingSize * ((candle.close - entryPrice) / entryPrice) + partialPnlLocked;
       equityCurve.push({ timestamp: candle.timestamp, equity: equity + unrealized });
     } else {
       equityCurve.push({ timestamp: candle.timestamp, equity });
@@ -81,9 +119,10 @@ export function runBacktest(
   // Close any open position at the end
   if (inPosition) {
     const lastCandle = candles[candles.length - 1];
-    const pnl = positionSize * ((lastCandle.close - entryPrice) / entryPrice);
-    equity += pnl;
-    trades.push(makeTrade(entryIndex, candles.length - 1, candles, entryPrice, lastCandle.close, positionSize));
+    const remainingPnl = remainingSize * ((lastCandle.close - entryPrice) / entryPrice);
+    const totalPnl = partialPnlLocked + remainingPnl;
+    equity += totalPnl;
+    trades.push(makeTrade(entryIndex, candles.length - 1, candles, entryPrice, lastCandle.close, positionSize, totalPnl));
     equityCurve[equityCurve.length - 1].equity = equity;
   }
 
@@ -98,9 +137,11 @@ function makeTrade(
   candles: Candle[],
   entryPrice: number,
   exitPrice: number,
-  positionSize: number
+  positionSize: number,
+  pnlOverride?: number
 ): Trade {
   const pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+  const pnlAbsolute = pnlOverride !== undefined ? pnlOverride : positionSize * (pnlPercent / 100);
   return {
     entryIndex,
     exitIndex,
@@ -109,7 +150,7 @@ function makeTrade(
     entryPrice,
     exitPrice,
     side: "long",
-    pnlPercent,
-    pnlAbsolute: positionSize * (pnlPercent / 100),
+    pnlPercent: positionSize > 0 ? (pnlAbsolute / positionSize) * 100 : pnlPercent,
+    pnlAbsolute,
   };
 }

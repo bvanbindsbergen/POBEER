@@ -12,6 +12,7 @@ import { ActivateStrategyModal } from "@/components/ai/activate-strategy-modal";
 import { OperationalDashboard } from "@/components/ai/operational-dashboard";
 import { PumpScreener } from "@/components/ai/pump-screener";
 import { MarketScanner } from "@/components/ai/market-scanner";
+import { WalkForwardResults } from "@/components/ai/walk-forward-results";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,8 +25,12 @@ import {
   Zap,
   Radar,
   Flame,
+  Shield,
+  Grid3x3,
 } from "lucide-react";
-import type { StrategyConfig } from "@/lib/ai/backtest/types";
+import type { StrategyConfig, WalkForwardResult } from "@/lib/ai/backtest/types";
+import { GridDashboard } from "@/components/grid/grid-dashboard";
+import { GridStrategyForm } from "@/components/grid/grid-strategy-form";
 
 class AIErrorBoundary extends Component<
   { children: ReactNode; fallback?: ReactNode },
@@ -86,6 +91,7 @@ export default function AIPage() {
     winRate?: number | string;
     sharpeRatio?: number | string;
   } | null>(null);
+  const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
   const queryClient = useQueryClient();
 
   // Check if user is leader
@@ -177,6 +183,28 @@ export default function AIPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
+    },
+  });
+
+  // Walk-forward mutation
+  const runWalkForward = useMutation({
+    mutationFn: async (params: {
+      symbol: string;
+      timeframe: string;
+      days: number;
+      strategyConfig: StrategyConfig;
+    }) => {
+      const res = await fetch("/api/ai/backtest/walk-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) throw new Error("Walk-forward failed");
+      const data = await res.json();
+      return data.result as WalkForwardResult;
+    },
+    onSuccess: (data) => {
+      setWalkForwardResult(data);
     },
   });
 
@@ -326,6 +354,13 @@ export default function AIPage() {
             <Radar className="w-4 h-4 mr-1.5" />
             Screeners
           </TabsTrigger>
+          <TabsTrigger
+            value="grid"
+            className="data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-400 text-sm"
+          >
+            <Grid3x3 className="w-4 h-4 mr-1.5" />
+            Grid Bots
+          </TabsTrigger>
         </TabsList>
 
         {/* Chat Tab */}
@@ -423,6 +458,24 @@ export default function AIPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => {
+                            setWalkForwardResult(null);
+                            runWalkForward.mutate({
+                              symbol: s.symbol,
+                              timeframe: s.timeframe,
+                              days: 90,
+                              strategyConfig: config,
+                            });
+                          }}
+                          disabled={runWalkForward.isPending}
+                          className="h-7 text-xs border-purple-500/20 text-purple-400 hover:bg-purple-500/10"
+                        >
+                          <Shield className="w-3 h-3 mr-1" />
+                          Walk-Forward
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() =>
                             setActivateSource({
                               id: s.id,
@@ -446,6 +499,22 @@ export default function AIPage() {
                   );
                 }
               )}
+            </div>
+          )}
+
+          {/* Walk-Forward Results */}
+          {(runWalkForward.isPending || walkForwardResult) && (
+            <div className="mt-4">
+              <WalkForwardResults
+                result={walkForwardResult}
+                isLoading={runWalkForward.isPending}
+              />
+            </div>
+          )}
+
+          {runWalkForward.isError && (
+            <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+              Walk-forward analysis failed. Please try again.
             </div>
           )}
         </TabsContent>
@@ -514,6 +583,16 @@ export default function AIPage() {
             </div>
             <MarketScanner />
           </div>
+        </TabsContent>
+
+        {/* Grid Bots Tab */}
+        <TabsContent value="grid" className="mt-0 space-y-4">
+          <GridStrategyForm
+            onCreated={() =>
+              queryClient.invalidateQueries({ queryKey: ["grid-strategies"] })
+            }
+          />
+          <GridDashboard />
         </TabsContent>
       </Tabs>
 

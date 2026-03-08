@@ -60,6 +60,15 @@ export const operationalStrategyStatusEnum = pgEnum(
   ["active", "paused", "stopped"]
 );
 
+// Trading mode enum (paper vs live)
+export const tradingModeEnum = pgEnum("trading_mode", ["live", "paper"]);
+
+// Grid strategy mode enum
+export const gridStrategyModeEnum = pgEnum("grid_strategy_mode", [
+  "arithmetic",
+  "geometric",
+]);
+
 // AI Assistant enums
 export const aiConversationStatusEnum = pgEnum("ai_conversation_status", [
   "active",
@@ -446,6 +455,12 @@ export const operationalStrategies = pgTable("operational_strategies", {
   pausedAt: timestamp("paused_at"),
   stoppedAt: timestamp("stopped_at"),
   stoppedReason: text("stopped_reason"), // "manual" / "daily_loss_limit" / "kill_switch"
+  // Paper trading mode
+  mode: tradingModeEnum("mode").notNull().default("live"),
+  paperBalance: real("paper_balance"), // virtual USDT balance for paper mode
+  // Multi-target take profit
+  remainingQuantity: real("remaining_quantity"), // tracks qty left after partial exits
+  tpLevelsFilled: integer("tp_levels_filled").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -463,6 +478,58 @@ export const operationalStrategyTrades = pgTable("operational_strategy_trades", 
   bybitOrderId: varchar("bybit_order_id", { length: 100 }),
   pnl: real("pnl"),
   reason: varchar("reason", { length: 50 }).notNull(), // "entry_signal" / "exit_signal" / "stop_loss" / "take_profit" / "manual_stop"
+  mode: tradingModeEnum("mode").notNull().default("live"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Strategy Equity Snapshots (daily snapshots for portfolio analytics)
+export const strategyEquitySnapshots = pgTable("strategy_equity_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  strategyId: uuid("strategy_id")
+    .notNull()
+    .references(() => operationalStrategies.id),
+  equity: real("equity").notNull(),
+  unrealizedPnl: real("unrealized_pnl").default(0),
+  snapshotDate: varchar("snapshot_date", { length: 10 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Grid Strategies
+export const gridStrategies = pgTable("grid_strategies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  mode: gridStrategyModeEnum("mode").notNull().default("arithmetic"),
+  upperBound: real("upper_bound").notNull(),
+  lowerBound: real("lower_bound").notNull(),
+  gridCount: integer("grid_count").notNull(),
+  investmentAmount: real("investment_amount").notNull(),
+  status: operationalStrategyStatusEnum("status").notNull().default("active"),
+  tradingMode: tradingModeEnum("trading_mode").notNull().default("live"),
+  totalPnl: real("total_pnl").default(0),
+  completedCycles: integer("completed_cycles").default(0),
+  activatedAt: timestamp("activated_at").defaultNow(),
+  stoppedAt: timestamp("stopped_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Grid Orders
+export const gridOrders = pgTable("grid_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  gridStrategyId: uuid("grid_strategy_id")
+    .notNull()
+    .references(() => gridStrategies.id),
+  gridLevel: integer("grid_level").notNull(),
+  price: real("price").notNull(),
+  side: varchar("side", { length: 10 }).notNull(),
+  quantity: real("quantity").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  bybitOrderId: varchar("bybit_order_id", { length: 100 }),
+  filledAt: timestamp("filled_at"),
+  pnl: real("pnl"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -489,3 +556,6 @@ export type NewsCacheEntry = typeof newsCache.$inferSelect;
 export type StrategySuggestion = typeof strategySuggestions.$inferSelect;
 export type OperationalStrategy = typeof operationalStrategies.$inferSelect;
 export type OperationalStrategyTrade = typeof operationalStrategyTrades.$inferSelect;
+export type StrategyEquitySnapshot = typeof strategyEquitySnapshots.$inferSelect;
+export type GridStrategy = typeof gridStrategies.$inferSelect;
+export type GridOrder = typeof gridOrders.$inferSelect;

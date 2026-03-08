@@ -23,7 +23,13 @@ export async function POST(
       maxCapPercent = 10,
       dailyLossLimitUsd = 100,
       sourceType = "strategy",
+      mode = "live",
     } = body;
+
+    // Validate mode
+    if (mode !== "live" && mode !== "paper") {
+      return NextResponse.json({ error: "Invalid trading mode. Must be 'live' or 'paper'" }, { status: 400 });
+    }
 
     // Validate limits
     if (maxCapUsd <= 0 || maxCapPercent <= 0 || dailyLossLimitUsd <= 0) {
@@ -107,6 +113,8 @@ export async function POST(
         maxCapPercent,
         dailyLossLimitUsd,
         todayPnlDate: today,
+        mode,
+        paperBalance: mode === "paper" ? maxCapUsd : null,
       })
       .returning();
 
