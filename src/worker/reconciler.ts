@@ -31,7 +31,7 @@ export class Reconciler {
 
     const apiKey = decrypt(leader.apiKeyEncrypted);
     const apiSecret = decrypt(leader.apiSecretEncrypted);
-    const exchange = createExchange({ apiKey, apiSecret });
+    const exchange = createExchange({ apiKey, apiSecret }, false, leader.exchange || "bybit");
 
     try {
       // 1. Fetch recent open orders

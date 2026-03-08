@@ -24,9 +24,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShieldAlert, X, Clock, Layers, Trash2 } from "lucide-react";
+import { ShieldAlert, X, Clock, Layers, Trash2, ArrowLeftRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+
+const EXCHANGES = [
+  { id: "bybit", name: "ByBit" },
+  { id: "binance", name: "Binance" },
+  { id: "okx", name: "OKX" },
+  { id: "kraken", name: "Kraken" },
+  { id: "kucoin", name: "KuCoin" },
+  { id: "gate", name: "Gate.io" },
+  { id: "bitget", name: "Bitget" },
+  { id: "mexc", name: "MEXC" },
+];
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -59,6 +70,7 @@ export default function SettingsPage() {
     customMaxUsd: string | null;
   }[] = rulesData?.rules || [];
 
+  const [selectedExchange, setSelectedExchange] = useState("bybit");
   const [dailyLossCapUsd, setDailyLossCapUsd] = useState("");
   const [leverageCap, setLeverageCap] = useState("");
   const [allowedMarkets, setAllowedMarkets] = useState<string[]>([]);
@@ -72,6 +84,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
+      setSelectedExchange(user.exchange || "bybit");
       setDailyLossCapUsd(user.dailyLossCapUsd?.toString() || "");
       setLeverageCap(user.leverageCap?.toString() || "");
       setFollowMode(user.followMode || "auto");
@@ -211,7 +224,40 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <ApiKeyForm hasApiKeys={user?.hasApiKeys} />
+      {/* Exchange Picker */}
+      <Card className="bg-[#111827] border-white/[0.06]">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <ArrowLeftRight className="w-4 h-4 text-cyan-400" />
+            Exchange
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-slate-500">
+            Select the exchange you want to connect for trading
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {EXCHANGES.map((ex) => {
+              const isActive = selectedExchange === ex.id;
+              return (
+                <button
+                  key={ex.id}
+                  onClick={() => setSelectedExchange(ex.id)}
+                  className={`rounded-lg border p-2.5 text-center transition-colors ${
+                    isActive
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-[#0a0e17] border-white/[0.06] text-slate-400 hover:border-white/[0.12]"
+                  }`}
+                >
+                  <div className="text-xs font-medium">{ex.name}</div>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <ApiKeyForm hasApiKeys={user?.hasApiKeys} exchange={selectedExchange} />
       <CopySettingsForm user={user} />
 
       {/* Risk Controls */}

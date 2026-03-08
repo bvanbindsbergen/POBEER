@@ -1,11 +1,29 @@
 import * as ccxt from "ccxt";
 import type { ExchangeCredentials, BalanceInfo, OrderResult } from "./types";
 
+export const SUPPORTED_EXCHANGES = [
+  { id: "bybit", name: "ByBit", hasWebSocket: true },
+  { id: "binance", name: "Binance", hasWebSocket: true },
+  { id: "okx", name: "OKX", hasWebSocket: true },
+  { id: "kraken", name: "Kraken", hasWebSocket: true },
+  { id: "kucoin", name: "KuCoin", hasWebSocket: true },
+  { id: "gate", name: "Gate.io", hasWebSocket: true },
+  { id: "bitget", name: "Bitget", hasWebSocket: true },
+  { id: "mexc", name: "MEXC", hasWebSocket: true },
+] as const;
+
 export function createExchange(
   credentials?: ExchangeCredentials,
-  sandbox = false
+  sandbox = false,
+  exchangeId: string = "bybit"
 ) {
-  const exchange = new ccxt.bybit({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ExchangeClass = (ccxt as any)[exchangeId];
+  if (!ExchangeClass) {
+    throw new Error(`Unsupported exchange: ${exchangeId}`);
+  }
+
+  const exchange = new ExchangeClass({
     apiKey: credentials?.apiKey,
     secret: credentials?.apiSecret,
     enableRateLimit: true,
@@ -23,9 +41,16 @@ export function createExchange(
 
 export function createProExchange(
   credentials?: ExchangeCredentials,
-  sandbox = false
+  sandbox = false,
+  exchangeId: string = "bybit"
 ) {
-  const exchange = new ccxt.pro.bybit({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ExchangeClass = (ccxt.pro as any)[exchangeId];
+  if (!ExchangeClass) {
+    throw new Error(`Unsupported exchange (pro): ${exchangeId}`);
+  }
+
+  const exchange = new ExchangeClass({
     apiKey: credentials?.apiKey,
     secret: credentials?.apiSecret,
     enableRateLimit: true,
@@ -42,9 +67,10 @@ export function createProExchange(
 }
 
 export async function validateApiKeys(
-  credentials: ExchangeCredentials
+  credentials: ExchangeCredentials,
+  exchangeId: string = "bybit"
 ): Promise<boolean> {
-  const exchange = createExchange(credentials);
+  const exchange = createExchange(credentials, false, exchangeId);
   try {
     await exchange.fetchBalance({ type: "spot" });
     return true;
@@ -56,7 +82,7 @@ export async function validateApiKeys(
 }
 
 export async function fetchUsdtBalance(
-  exchange: InstanceType<typeof ccxt.bybit>
+  exchange: ccxt.Exchange
 ): Promise<BalanceInfo> {
   const balance = await exchange.fetchBalance({ type: "spot" });
   const usdt = balance.USDT || { free: 0, used: 0, total: 0 };
@@ -77,7 +103,7 @@ export interface TransferRecord {
 }
 
 export async function fetchDeposits(
-  exchange: InstanceType<typeof ccxt.bybit>,
+  exchange: ccxt.Exchange,
   since?: number,
   limit = 50
 ): Promise<TransferRecord[]> {
@@ -93,7 +119,7 @@ export async function fetchDeposits(
 }
 
 export async function fetchWithdrawals(
-  exchange: InstanceType<typeof ccxt.bybit>,
+  exchange: ccxt.Exchange,
   since?: number,
   limit = 50
 ): Promise<TransferRecord[]> {
@@ -109,7 +135,7 @@ export async function fetchWithdrawals(
 }
 
 export async function placeMarketOrder(
-  exchange: InstanceType<typeof ccxt.bybit>,
+  exchange: ccxt.Exchange,
   symbol: string,
   side: "buy" | "sell",
   amount: number
@@ -128,7 +154,7 @@ export async function placeMarketOrder(
 }
 
 export async function placeLimitOrder(
-  exchange: InstanceType<typeof ccxt.bybit>,
+  exchange: ccxt.Exchange,
   symbol: string,
   side: "buy" | "sell",
   amount: number,
@@ -148,7 +174,7 @@ export async function placeLimitOrder(
 }
 
 export async function fetchOrderStatus(
-  exchange: InstanceType<typeof ccxt.bybit>,
+  exchange: ccxt.Exchange,
   orderId: string,
   symbol: string
 ): Promise<OrderResult> {

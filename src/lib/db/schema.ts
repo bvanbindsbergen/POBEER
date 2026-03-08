@@ -60,6 +60,18 @@ export const operationalStrategyStatusEnum = pgEnum(
   ["active", "paused", "stopped"]
 );
 
+// Exchange enum (supported exchanges)
+export const exchangeEnum = pgEnum("exchange_type", [
+  "bybit",
+  "binance",
+  "okx",
+  "kraken",
+  "kucoin",
+  "gate",
+  "bitget",
+  "mexc",
+]);
+
 // Trading mode enum (paper vs live)
 export const tradingModeEnum = pgEnum("trading_mode", ["live", "paper"]);
 
@@ -96,6 +108,7 @@ export const users = pgTable("users", {
   // Encrypted API keys (AES-256-GCM)
   apiKeyEncrypted: text("api_key_encrypted"),
   apiSecretEncrypted: text("api_secret_encrypted"),
+  exchange: exchangeEnum("exchange").notNull().default("bybit"),
   // Copy settings
   copyRatioPercent: numeric("copy_ratio_percent", {
     precision: 5,

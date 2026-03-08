@@ -15,6 +15,13 @@
       "when": 1772956110844,
       "tag": "0001_outgoing_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772958185950,
+      "tag": "0002_flashy_hex",
+      "breakpoints": true
     }
   ]
 }

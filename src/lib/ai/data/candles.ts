@@ -58,7 +58,7 @@ export async function fetchCandles(
 
     if (ohlcv.length > 0) {
       // Upsert into cache
-      const rows = ohlcv.map((c) => ({
+      const rows = ohlcv.map((c: (number | undefined)[]) => ({
         symbol,
         timeframe,
         timestamp: new Date(c[0] as number),
@@ -89,7 +89,7 @@ export async function fetchCandles(
       }
     }
 
-    return ohlcv.map((c) => ({
+    return ohlcv.map((c: (number | undefined)[]) => ({
       timestamp: c[0] as number,
       open: c[1] as number,
       high: c[2] as number,

@@ -42,10 +42,11 @@ export async function GET(req: NextRequest) {
 
       const signals: PumpSignal[] = [];
 
-      for (const [symbol, ticker] of Object.entries(tickers)) {
+      for (const [symbol, rawTicker] of Object.entries(tickers)) {
         // Only USDT pairs
         if (!symbol.endsWith("/USDT")) continue;
 
+        const ticker = rawTicker as { percentage?: number; quoteVolume?: number; last?: number; timestamp?: number };
         const priceChange = ticker.percentage ?? 0;
         const volume = ticker.quoteVolume ?? 0;
 
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
           if (candles.length >= 2) {
             const lastCandle = candles[candles.length - 1];
             const prevCandles = candles.slice(0, -1);
-            const avgVolume = prevCandles.reduce((s, c) => s + (c[5] as number), 0) / prevCandles.length;
+            const avgVolume = prevCandles.reduce((s: number, c: (number | undefined)[]) => s + (c[5] as number), 0) / prevCandles.length;
             const currentVolume = lastCandle[5] as number;
             const volChange = avgVolume > 0 ? ((currentVolume - avgVolume) / avgVolume) * 100 : 0;
 

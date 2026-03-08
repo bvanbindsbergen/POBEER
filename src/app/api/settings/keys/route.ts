@@ -9,7 +9,7 @@ import { validateApiKeys } from "@/lib/exchange/client";
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth();
-    const { apiKey, apiSecret } = await req.json();
+    const { apiKey, apiSecret, exchange: exchangeId } = await req.json();
 
     if (!apiKey || !apiSecret) {
       return NextResponse.json(
@@ -18,11 +18,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const selectedExchange = exchangeId || "bybit";
+
     // Validate keys by testing with fetchBalance
-    const valid = await validateApiKeys({ apiKey, apiSecret });
+    const valid = await validateApiKeys({ apiKey, apiSecret }, selectedExchange);
     if (!valid) {
       return NextResponse.json(
-        { error: "Invalid API keys. Please check your ByBit API key and secret." },
+        { error: "Invalid API keys. Please check your API key and secret." },
         { status: 400 }
       );
     }
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
       .set({
         apiKeyEncrypted,
         apiSecretEncrypted,
+        exchange: selectedExchange,
         updatedAt: new Date(),
       })
       .where(eq(users.id, auth.user.id));

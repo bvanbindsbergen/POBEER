@@ -64,7 +64,7 @@ export async function POST(
       try {
         const apiKey = decrypt(follower.apiKeyEncrypted);
         const apiSecret = decrypt(follower.apiSecretEncrypted);
-        exchange = createExchange({ apiKey, apiSecret });
+        exchange = createExchange({ apiKey, apiSecret }, false, follower.exchange || "bybit");
 
         const amount = Number(invoice.invoiceAmount);
         await exchange.transfer("USDT", amount, "spot", "spot", {

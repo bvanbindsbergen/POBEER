@@ -80,7 +80,7 @@ export async function POST(
     const exchange = createExchange({
       apiKey: decrypt(user.apiKeyEncrypted),
       apiSecret: decrypt(user.apiSecretEncrypted),
-    });
+    }, false, user.exchange || "bybit");
 
     try {
       const quantity = Number(trade.suggestedQuantity);

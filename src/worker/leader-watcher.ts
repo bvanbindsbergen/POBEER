@@ -11,10 +11,9 @@ import * as ccxt from "ccxt";
 const RECONNECT_DELAY = 5_000;
 const MAX_RECONNECT_DELAY = 60_000;
 
-type ProBybit = InstanceType<typeof ccxt.pro.bybit>;
-
 export class LeaderWatcher {
-  private exchange: ProBybit | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private exchange: any = null;
   private running = false;
   private reconnectDelay = RECONNECT_DELAY;
   private leader: User;
@@ -80,8 +79,8 @@ export class LeaderWatcher {
     const apiKey = decrypt(this.leader.apiKeyEncrypted!);
     const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
 
-    this.exchange = createProExchange({ apiKey, apiSecret });
-    console.log("[LeaderWatcher] Connected to ByBit WebSocket");
+    this.exchange = createProExchange({ apiKey, apiSecret }, false, this.leader.exchange || "bybit");
+    console.log(`[LeaderWatcher] Connected to ${this.leader.exchange || "bybit"} WebSocket`);
     this.reconnectDelay = RECONNECT_DELAY; // Reset on successful connect
   }
 

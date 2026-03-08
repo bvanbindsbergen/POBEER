@@ -135,7 +135,7 @@ export class GridExecutor {
     if (!isPaper) {
       const apiKey = decrypt(this.leader.apiKeyEncrypted!);
       const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-      exchange = createExchange({ apiKey, apiSecret });
+      exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
     }
 
     try {
@@ -221,7 +221,7 @@ export class GridExecutor {
     if (!isPaper) {
       const apiKey = decrypt(this.leader.apiKeyEncrypted!);
       const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-      exchange = createExchange({ apiKey, apiSecret });
+      exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
     }
 
     try {

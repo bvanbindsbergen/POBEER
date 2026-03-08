@@ -188,7 +188,7 @@ export class StrategyExecutor {
         // Live mode: use real exchange
         const apiKey = decrypt(this.leader.apiKeyEncrypted!);
         const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-        const exchange = createExchange({ apiKey, apiSecret });
+        const exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
 
         try {
           const balance = await fetchUsdtBalance(exchange);
@@ -291,7 +291,7 @@ export class StrategyExecutor {
         // Live mode: use real exchange
         const apiKey = decrypt(this.leader.apiKeyEncrypted!);
         const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-        const exchange = createExchange({ apiKey, apiSecret });
+        const exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
 
         try {
           const balance = await fetchUsdtBalance(exchange);
@@ -429,7 +429,7 @@ export class StrategyExecutor {
       } else {
         const apiKey = decrypt(this.leader.apiKeyEncrypted!);
         const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-        const exchange = createExchange({ apiKey, apiSecret });
+        const exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
 
         try {
           console.log(`[StrategyExecutor] ${strategy.name}: EXIT SELL ${sellQty.toFixed(6)} ${strategy.symbol} (${reason})`);
@@ -546,7 +546,7 @@ export class StrategyExecutor {
       } else {
         const apiKey = decrypt(this.leader.apiKeyEncrypted!);
         const apiSecret = decrypt(this.leader.apiSecretEncrypted!);
-        const exchange = createExchange({ apiKey, apiSecret });
+        const exchange = createExchange({ apiKey, apiSecret }, false, this.leader?.exchange || "bybit");
         try {
           const order = await placeMarketOrder(exchange, strategy.symbol, "sell", qty);
           fillPrice = order.average || order.price || currentPrice;

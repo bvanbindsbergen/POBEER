@@ -63,7 +63,7 @@ export class TransferTracker {
       const exchange = createExchange({
         apiKey: decrypt(follower.apiKeyEncrypted!),
         apiSecret: decrypt(follower.apiSecretEncrypted!),
-      });
+      }, false, follower.exchange || "bybit");
 
       try {
         // Fetch last 30 days of deposits and withdrawals

@@ -44,7 +44,7 @@ export async function POST(
 
       const apiKey = decrypt(auth.user.apiKeyEncrypted);
       const apiSecret = decrypt(auth.user.apiSecretEncrypted);
-      const exchange = createExchange({ apiKey, apiSecret });
+      const exchange = createExchange({ apiKey, apiSecret }, false, auth.user.exchange || "bybit");
 
       try {
         const order = await placeMarketOrder(exchange, strategy.symbol, "sell", strategy.entryQuantity);

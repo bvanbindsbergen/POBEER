@@ -93,7 +93,7 @@ export class TradeCopier {
       ? Number(follower.maxTradeUsd)
       : Infinity;
 
-    let exchange: ccxt.bybit | null = null;
+    let exchange: ccxt.Exchange | null = null;
 
     try {
       // Risk control: check allowed markets
@@ -269,10 +269,10 @@ export class TradeCopier {
       // Decrypt API keys
       const apiKey = decrypt(follower.apiKeyEncrypted!);
       const apiSecret = decrypt(follower.apiSecretEncrypted!);
-      exchange = createExchange({ apiKey, apiSecret });
+      exchange = createExchange({ apiKey, apiSecret }, false, follower.exchange || "bybit");
 
       // Fetch balance
-      const balance = await fetchUsdtBalance(exchange);
+      const balance = await fetchUsdtBalance(exchange!);
       const availableUsdt = balance.free;
 
       // Calculate order size (apply symbol-specific overrides if present)
@@ -397,7 +397,7 @@ export class TradeCopier {
     leaderTrade: LeaderTrade,
     fillPrice: number
   ) {
-    let exchange: ccxt.bybit | null = null;
+    let exchange: ccxt.Exchange | null = null;
 
     try {
       // Manual approval mode check for sells
@@ -477,7 +477,7 @@ export class TradeCopier {
       // Decrypt keys and sell
       const apiKey = decrypt(follower.apiKeyEncrypted!);
       const apiSecret = decrypt(follower.apiSecretEncrypted!);
-      exchange = createExchange({ apiKey, apiSecret });
+      exchange = createExchange({ apiKey, apiSecret }, false, follower.exchange || "bybit");
 
       const result = await this.retryOrder(() =>
         placeMarketOrder(

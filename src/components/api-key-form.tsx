@@ -9,12 +9,24 @@ import { Key, Shield, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
+const EXCHANGE_NAMES: Record<string, string> = {
+  bybit: "ByBit",
+  binance: "Binance",
+  okx: "OKX",
+  kraken: "Kraken",
+  kucoin: "KuCoin",
+  gate: "Gate.io",
+  bitget: "Bitget",
+  mexc: "MEXC",
+};
+
 interface ApiKeyFormProps {
   hasApiKeys?: boolean;
   onSuccess?: () => void;
+  exchange?: string;
 }
 
-export function ApiKeyForm({ hasApiKeys, onSuccess }: ApiKeyFormProps) {
+export function ApiKeyForm({ hasApiKeys, onSuccess, exchange }: ApiKeyFormProps) {
   const queryClient = useQueryClient();
   const [showApiKey, setShowApiKey] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
@@ -22,7 +34,7 @@ export function ApiKeyForm({ hasApiKeys, onSuccess }: ApiKeyFormProps) {
   const [apiSecret, setApiSecret] = useState("");
 
   const saveKeysMutation = useMutation({
-    mutationFn: async (data: { apiKey: string; apiSecret: string }) => {
+    mutationFn: async (data: { apiKey: string; apiSecret: string; exchange?: string }) => {
       const res = await fetch("/api/settings/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,7 +63,7 @@ export function ApiKeyForm({ hasApiKeys, onSuccess }: ApiKeyFormProps) {
       <CardHeader>
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Key className="w-4 h-4 text-amber-400" />
-          ByBit API Keys
+          {exchange ? EXCHANGE_NAMES[exchange] || exchange : "Exchange"} API Keys
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -130,7 +142,7 @@ export function ApiKeyForm({ hasApiKeys, onSuccess }: ApiKeyFormProps) {
         </div>
 
         <Button
-          onClick={() => saveKeysMutation.mutate({ apiKey, apiSecret })}
+          onClick={() => saveKeysMutation.mutate({ apiKey, apiSecret, exchange })}
           disabled={!apiKey || !apiSecret || saveKeysMutation.isPending}
           className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white shadow-lg shadow-emerald-500/20"
         >

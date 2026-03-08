@@ -1,0 +1,2 @@
+CREATE TYPE "public"."exchange_type" AS ENUM('bybit', 'binance', 'okx', 'kraken', 'kucoin', 'gate', 'bitget', 'mexc');--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "exchange" "exchange_type" DEFAULT 'bybit' NOT NULL;

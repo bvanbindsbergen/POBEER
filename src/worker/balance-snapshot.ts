@@ -69,7 +69,7 @@ export class BalanceSnapshotJob {
       const exchange = createExchange({
         apiKey: decrypt(follower.apiKeyEncrypted!),
         apiSecret: decrypt(follower.apiSecretEncrypted!),
-      });
+      }, false, follower.exchange || "bybit");
 
       try {
         const balance = await fetchUsdtBalance(exchange);

@@ -94,7 +94,7 @@ export function ActivateStrategyModal({
             Activate Strategy
           </DialogTitle>
           <DialogDescription className="text-slate-500">
-            Deploy this strategy for {tradingMode === "paper" ? "paper trading" : "live auto-trading"} on ByBit
+            Deploy this strategy for {tradingMode === "paper" ? "paper trading" : "live auto-trading"}
           </DialogDescription>
         </DialogHeader>
 
