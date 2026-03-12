@@ -21,11 +21,14 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth();
 
     const body = await req.json();
-    const count: number = Math.min(body.count || 10, 30);
+    const aiBaseCount: number = Math.min(body.count || 20, 30); // Claude generates up to 30 unique ideas
+    const targetTotal: number = body.targetTotal || aiBaseCount; // expand with SL/TP variations to reach this
     const userPrompt: string = body.prompt || "";
     const timeframe: string = body.timeframe || "1h";
     const symbols: string[] = body.symbols?.length ? body.symbols : TOP_SYMBOLS.slice(0, 10);
     const positionSizePercent: number = body.positionSizePercent || 10;
+    const slRange: number[] = body.slRange || [2, 3, 5, 8];
+    const tpRange: number[] = body.tpRange || [3, 5, 8, 12, 15];
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
     const client = new Anthropic({ apiKey });
 
     // Scale max_tokens: ~80 tokens per strategy for compact JSON
-    const maxTokens = Math.min(Math.max(count * 150, 2048), 16384);
+    const maxTokens = Math.min(Math.max(aiBaseCount * 150, 2048), 16384);
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -105,7 +108,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: `Generate exactly ${count} trading strategies based on current market data. Each strategy must use specific technical indicator conditions that can be backtested.
+          content: `Generate exactly ${aiBaseCount} trading strategies based on current market data. Each strategy must use specific technical indicator conditions that can be backtested.
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}
 
@@ -122,7 +125,7 @@ Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator comparisons, value can be: {"indicator": "ema", "params": {"period": 21}}
 
-Respond ONLY with a JSON array of exactly ${count} objects. No markdown, no explanation, no whitespace padding. Keep JSON compact.
+Respond ONLY with a JSON array of exactly ${aiBaseCount} objects. No markdown, no explanation, no whitespace padding. Keep JSON compact.
 Each object:
 {"name":"SOL RSI Bounce","symbol":"SOL/USDT","sourceSignal":"RSI<30","tags":["rsi","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"rsi","operator":"<","value":30}],"exitConditions":[{"indicator":"rsi","operator":">","value":70}],"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}}}
 
@@ -184,12 +187,11 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         console.error("[Funnel AI] Could not parse any strategies from response");
         return NextResponse.json({ error: "Failed to parse AI response. Try generating fewer strategies." }, { status: 500 });
       }
-      console.log(`[Funnel AI] Recovered ${rawStrategies.length} of ${count} strategies`);
+      console.log(`[Funnel AI] Recovered ${rawStrategies.length} of ${aiBaseCount} strategies`);
     }
 
-    // Convert to GeneratedStrategy format
-    // Conditions come from Claude's JSON — cast through unknown since structure is validated at runtime by the backtest engine
-    const strategies: GeneratedStrategy[] = rawStrategies.map((s, i) => ({
+    // Convert AI base strategies to GeneratedStrategy format
+    const baseStrategies: GeneratedStrategy[] = rawStrategies.map((s, i) => ({
       id: `ai-${i + 1}`,
       name: s.name || `AI Strategy ${i + 1}`,
       symbol: s.symbol,
@@ -205,6 +207,49 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
       tags: [...(s.tags || []), "ai-generated"],
     }));
 
+    // If targetTotal > base count, expand with SL/TP variations
+    let strategies: GeneratedStrategy[];
+    if (targetTotal > baseStrategies.length) {
+      strategies = [];
+      let idCounter = 0;
+      for (const base of baseStrategies) {
+        // Always include the original
+        strategies.push({ ...base, id: `ai-${++idCounter}` });
+        // Create SL/TP variations
+        const shortName = base.name.replace(/\s*\|.*$/, ""); // strip existing SL/TP suffix
+        for (const sl of slRange) {
+          for (const tp of tpRange) {
+            if (tp <= sl) continue;
+            // Skip if same as original
+            if (sl === base.strategyConfig.stopLossPercent && tp === base.strategyConfig.takeProfitPercent) continue;
+            strategies.push({
+              id: `ai-${++idCounter}`,
+              name: `${shortName} | TP${tp}% SL${sl}%`,
+              symbol: base.symbol,
+              strategyConfig: {
+                ...base.strategyConfig,
+                name: `${shortName} | TP${tp}% SL${sl}%`,
+                stopLossPercent: sl,
+                takeProfitPercent: tp,
+              },
+              sourceSignal: base.sourceSignal,
+              tags: [...base.tags.filter((t) => !t.startsWith("sl") && !t.startsWith("tp")), `sl${sl}`, `tp${tp}`],
+            });
+          }
+        }
+      }
+      // Cap at targetTotal, shuffle if exceeding
+      if (strategies.length > targetTotal) {
+        for (let i = strategies.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [strategies[i], strategies[j]] = [strategies[j], strategies[i]];
+        }
+        strategies = strategies.slice(0, targetTotal);
+      }
+    } else {
+      strategies = baseStrategies;
+    }
+
     const elapsed = performance.now() - start;
 
     // Token usage for cost reporting
@@ -215,9 +260,10 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
     return NextResponse.json({
       strategies,
       totalGenerated: strategies.length,
+      aiBaseCount: baseStrategies.length,
       generationTimeMs: Math.round(elapsed),
       tokenUsage: { inputTokens, outputTokens, estimatedCost: Math.round(estimatedCost * 10000) / 10000 },
-      config: { timeframe, count },
+      config: { timeframe, targetTotal },
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

@@ -104,11 +104,14 @@ export function StrategyFunnel({
   const [useScanner, setUseScanner] = useState(!initialSignals?.length);
 
   // AI mode config
-  const [aiCount, setAiCount] = useState(10);
+  const [aiTargetTotal, setAiTargetTotal] = useState(200);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
+  const [aiBaseGenerated, setAiBaseGenerated] = useState<number | null>(null);
 
   const positionSizePercent = 10; // fixed default
+  // AI asks Claude for up to 20 base ideas, then expands with SL/TP variations
+  const aiBaseCount = Math.min(20, aiTargetTotal);
 
   // Stage 2 state
   const [generated, setGenerated] = useState<GeneratedStrategy[]>([]);
@@ -175,10 +178,13 @@ export function StrategyFunnel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          count: aiCount,
+          count: aiBaseCount,
+          targetTotal: aiTargetTotal,
           prompt: aiPrompt,
           timeframe,
           positionSizePercent,
+          slRange: SL_PRESETS[slPreset],
+          tpRange: TP_PRESETS[tpPreset],
         }),
       });
       if (!res.ok) {
@@ -191,6 +197,7 @@ export function StrategyFunnel({
       setGenerated(data.strategies);
       setSelected(new Set(data.strategies.map((s: GeneratedStrategy) => s.id)));
       setAiCost(data.tokenUsage || null);
+      setAiBaseGenerated(data.aiBaseCount || null);
       setStage(2);
     },
   });
@@ -484,23 +491,57 @@ export function StrategyFunnel({
           {/* AI mode options */}
           {mode === "ai" && (
             <div className="space-y-3">
-              <div>
-                <label className="text-[11px] text-slate-500 block mb-1">
-                  Number of strategies: {aiCount}
-                </label>
-                <input
-                  type="range"
-                  min={5}
-                  max={30}
-                  step={5}
-                  value={aiCount}
-                  onChange={(e) => setAiCount(Number(e.target.value))}
-                  className="w-full accent-violet-500"
-                />
-                <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
-                  <span>5</span>
-                  <span>~${(aiCount * 0.003).toFixed(3)} estimated</span>
-                  <span>30</span>
+              <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 px-3 py-2 text-[11px] text-slate-400">
+                Claude generates <span className="text-violet-400 font-medium">{aiBaseCount} unique ideas</span> from live market data,
+                then expands to <span className="text-violet-400 font-medium">{aiTargetTotal} strategies</span> with SL/TP variations.
+                Cost: ~$0.03-0.05 per run.
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">
+                    Total strategies: {aiTargetTotal}
+                  </label>
+                  <input
+                    type="range"
+                    min={10}
+                    max={5000}
+                    step={10}
+                    value={aiTargetTotal}
+                    onChange={(e) => setAiTargetTotal(Number(e.target.value))}
+                    className="w-full accent-violet-500"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
+                    <span>10</span>
+                    <span>5000</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">SL Range</label>
+                    <select
+                      value={slPreset}
+                      onChange={(e) => setSlPreset(e.target.value as keyof typeof SL_PRESETS)}
+                      className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                    >
+                      {Object.entries(SL_PRESETS).map(([name, vals]) => (
+                        <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">TP Range</label>
+                    <select
+                      value={tpPreset}
+                      onChange={(e) => setTpPreset(e.target.value as keyof typeof TP_PRESETS)}
+                      className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                    >
+                      {Object.entries(TP_PRESETS).map(([name, vals]) => (
+                        <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -519,7 +560,7 @@ export function StrategyFunnel({
 
               {aiCost && (
                 <div className="text-[10px] text-slate-500">
-                  Last generation: {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
+                  Last run: {aiBaseGenerated} AI ideas → {generated.length} strategies | {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
                 </div>
               )}
             </div>
@@ -550,7 +591,7 @@ export function StrategyFunnel({
               ) : (
                 <Brain className="w-4 h-4 mr-2" />
               )}
-              Generate {aiCount} AI Strategies
+              Generate {aiTargetTotal} AI Strategies
             </Button>
           )}
 
@@ -882,134 +923,210 @@ function SortHeader({
 }
 
 function StrategyDetail({ result }: { result: FunnelResult }) {
-  const { strategy, trades, equityCurve } = result;
+  const { strategy, trades, equityCurve, metrics } = result;
   const config = strategy.strategyConfig;
 
-  // Mini equity chart using SVG
-  const chartPoints = useMemo(() => {
+  // Equity curve SVG with Y-axis labels
+  const chartData = useMemo(() => {
     if (!equityCurve || equityCurve.length < 2) return null;
     const minEq = Math.min(...equityCurve.map((p) => p.equity));
     const maxEq = Math.max(...equityCurve.map((p) => p.equity));
     const range = maxEq - minEq || 1;
-    const w = 400;
-    const h = 80;
-    return equityCurve
+    const w = 460;
+    const h = 120;
+    const padL = 60; // left padding for Y-axis
+    const points = equityCurve
       .map((p, i) => {
-        const x = (i / (equityCurve.length - 1)) * w;
-        const y = h - ((p.equity - minEq) / range) * h;
+        const x = padL + (i / (equityCurve.length - 1)) * (w - padL);
+        const y = 8 + (1 - (p.equity - minEq) / range) * (h - 16);
         return `${x},${y}`;
       })
       .join(" ");
+    // Fill polygon (area under curve)
+    const firstX = padL;
+    const lastX = padL + (w - padL);
+    const fill = `${firstX},${h - 8} ${points} ${lastX},${h - 8}`;
+    // Y-axis ticks
+    const ticks = [minEq, minEq + range * 0.5, maxEq].map((v) => ({
+      label: `$${v.toFixed(0)}`,
+      y: 8 + (1 - (v - minEq) / range) * (h - 16),
+    }));
+    return { points, fill, ticks, w, h, padL, minEq, maxEq };
   }, [equityCurve]);
+
+  // Win/loss stats from trades
+  const tradeStats = useMemo(() => {
+    if (!trades || trades.length === 0) return null;
+    const wins = trades.filter((t) => t.pnlPercent > 0);
+    const losses = trades.filter((t) => t.pnlPercent <= 0);
+    const bestTrade = trades.reduce((best, t) => (t.pnlPercent > best.pnlPercent ? t : best), trades[0]);
+    const worstTrade = trades.reduce((worst, t) => (t.pnlPercent < worst.pnlPercent ? t : worst), trades[0]);
+    const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.pnlPercent, 0) / wins.length : 0;
+    const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.pnlPercent, 0) / losses.length : 0;
+    return { wins: wins.length, losses: losses.length, bestTrade, worstTrade, avgWin, avgLoss };
+  }, [trades]);
+
+  const color = metrics.totalPnl >= 0 ? "emerald" : "red";
 
   return (
     <div className="bg-[#0a0f1a] p-4 space-y-4">
-      {/* Strategy config summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Metric cards row */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <MetricCard label="Total Return" value={`${metrics.totalPnl >= 0 ? "+" : ""}${metrics.totalPnl.toFixed(2)}%`} color={color} />
+        <MetricCard label="Win Rate" value={`${(metrics.winRate * 100).toFixed(1)}%`} color={metrics.winRate >= 0.5 ? "emerald" : "amber"} />
+        <MetricCard label="Max Drawdown" value={`${(metrics.maxDrawdown * 100).toFixed(1)}%`} color="red" />
+        <MetricCard label="Sharpe Ratio" value={metrics.sharpeRatio.toFixed(2)} color={metrics.sharpeRatio >= 1 ? "emerald" : "amber"} />
+        <MetricCard label="Profit Factor" value={metrics.profitFactor.toFixed(2)} color={metrics.profitFactor >= 1.5 ? "emerald" : "amber"} />
+        <MetricCard label="Total Trades" value={String(metrics.totalTrades)} color="slate" />
+      </div>
+
+      {/* Strategy config */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-lg bg-[#111827] border border-white/[0.04] p-3">
         <div>
-          <div className="text-[10px] text-slate-600 mb-1">Entry Conditions</div>
-          <div className="space-y-0.5">
+          <div className="text-[10px] text-slate-600 mb-1.5 font-medium uppercase tracking-wider">Entry Conditions</div>
+          <div className="space-y-1">
             {config.entryConditions.map((c, i) => (
-              <div key={i} className="text-[11px] text-emerald-400 flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0" />
+              <div key={i} className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                 {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
               </div>
             ))}
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-600 mb-1">Exit Conditions</div>
-          <div className="space-y-0.5">
+          <div className="text-[10px] text-slate-600 mb-1.5 font-medium uppercase tracking-wider">Exit Conditions</div>
+          <div className="space-y-1">
             {config.exitConditions.map((c, i) => (
-              <div key={i} className="text-[11px] text-red-400 flex items-center gap-1">
-                <span className="w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
+              <div key={i} className="text-[11px] text-red-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
                 {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
               </div>
             ))}
           </div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-600 mb-1">Risk Management</div>
-          <div className="text-[11px] text-red-400">SL: {config.stopLossPercent || "—"}%</div>
-          <div className="text-[11px] text-emerald-400">TP: {config.takeProfitPercent || "—"}%</div>
-          <div className="text-[11px] text-slate-400">Size: {config.positionSizePercent}%</div>
+          <div className="text-[10px] text-slate-600 mb-1.5 font-medium uppercase tracking-wider">Risk Management</div>
+          <div className="space-y-0.5">
+            <div className="text-[11px] text-red-400">Stop Loss: {config.stopLossPercent || "—"}%</div>
+            <div className="text-[11px] text-emerald-400">Take Profit: {config.takeProfitPercent || "—"}%</div>
+            <div className="text-[11px] text-slate-400">Position Size: {config.positionSizePercent}%</div>
+          </div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-600 mb-1">Tags</div>
-          <div className="flex flex-wrap gap-1">
-            {strategy.tags.map((t) => (
-              <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
-            ))}
-          </div>
+          <div className="text-[10px] text-slate-600 mb-1.5 font-medium uppercase tracking-wider">Trade Stats</div>
+          {tradeStats && (
+            <div className="space-y-0.5 text-[11px]">
+              <div><span className="text-emerald-400">{tradeStats.wins}W</span> / <span className="text-red-400">{tradeStats.losses}L</span></div>
+              <div className="text-slate-400">Best: <span className="text-emerald-400">+{tradeStats.bestTrade.pnlPercent.toFixed(2)}%</span></div>
+              <div className="text-slate-400">Worst: <span className="text-red-400">{tradeStats.worstTrade.pnlPercent.toFixed(2)}%</span></div>
+              <div className="text-slate-400">Avg W/L: <span className="text-emerald-400">+{tradeStats.avgWin.toFixed(2)}%</span> / <span className="text-red-400">{tradeStats.avgLoss.toFixed(2)}%</span></div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Equity curve */}
-      {chartPoints && (
-        <div>
-          <div className="text-[10px] text-slate-600 mb-1">Equity Curve</div>
-          <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-2">
-            <svg viewBox="0 0 400 80" className="w-full h-20" preserveAspectRatio="none">
-              <polyline
-                points={chartPoints}
-                fill="none"
-                stroke={result.metrics.totalPnl >= 0 ? "#34d399" : "#f87171"}
-                strokeWidth="1.5"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-            {equityCurve && equityCurve.length > 0 && (
-              <div className="flex justify-between text-[9px] text-slate-600 mt-1">
-                <span>{new Date(equityCurve[0].timestamp).toLocaleDateString()}</span>
-                <span>${equityCurve[0].equity.toFixed(0)} → ${equityCurve[equityCurve.length - 1].equity.toFixed(0)}</span>
-                <span>{new Date(equityCurve[equityCurve.length - 1].timestamp).toLocaleDateString()}</span>
-              </div>
-            )}
+      {chartData && equityCurve && (
+        <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3">
+          <div className="text-[10px] text-slate-600 mb-2 font-medium uppercase tracking-wider">Equity Curve</div>
+          <svg viewBox={`0 0 ${chartData.w} ${chartData.h}`} className="w-full h-32">
+            {/* Grid lines */}
+            {chartData.ticks.map((tick, i) => (
+              <React.Fragment key={i}>
+                <line x1={chartData.padL} y1={tick.y} x2={chartData.w} y2={tick.y} stroke="#1e293b" strokeWidth="0.5" />
+                <text x={chartData.padL - 4} y={tick.y + 3} textAnchor="end" className="fill-slate-600" fontSize="8">{tick.label}</text>
+              </React.Fragment>
+            ))}
+            {/* Area fill */}
+            <polygon
+              points={chartData.fill}
+              fill={metrics.totalPnl >= 0 ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.08)"}
+            />
+            {/* Line */}
+            <polyline
+              points={chartData.points}
+              fill="none"
+              stroke={metrics.totalPnl >= 0 ? "#34d399" : "#f87171"}
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+          <div className="flex justify-between text-[9px] text-slate-600 mt-1 px-1">
+            <span>{new Date(equityCurve[0].timestamp).toLocaleDateString()}</span>
+            <span>${equityCurve[0].equity.toFixed(0)} → ${equityCurve[equityCurve.length - 1].equity.toFixed(0)}</span>
+            <span>{new Date(equityCurve[equityCurve.length - 1].timestamp).toLocaleDateString()}</span>
           </div>
         </div>
       )}
 
       {/* Trade list */}
       {trades && trades.length > 0 && (
-        <div>
-          <div className="text-[10px] text-slate-600 mb-1">Trades ({trades.length})</div>
-          <div className="max-h-48 overflow-y-auto rounded-lg border border-white/[0.04]">
+        <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3">
+          <div className="text-[10px] text-slate-600 mb-2 font-medium uppercase tracking-wider">
+            Trades ({trades.length})
+          </div>
+          <div className="max-h-64 overflow-y-auto">
             <table className="w-full text-[11px]">
-              <thead className="bg-[#111827] sticky top-0">
+              <thead className="bg-[#0d1117] sticky top-0">
                 <tr className="text-slate-600">
-                  <th className="text-left p-1.5">#</th>
-                  <th className="text-left p-1.5">Entry</th>
-                  <th className="text-left p-1.5">Exit</th>
-                  <th className="text-right p-1.5">Entry $</th>
-                  <th className="text-right p-1.5">Exit $</th>
-                  <th className="text-right p-1.5">PnL %</th>
-                  <th className="text-right p-1.5">PnL $</th>
+                  <th className="text-left p-2 w-8">#</th>
+                  <th className="text-left p-2">Entry Date</th>
+                  <th className="text-left p-2">Exit Date</th>
+                  <th className="text-left p-2">Duration</th>
+                  <th className="text-right p-2">Entry Price</th>
+                  <th className="text-right p-2">Exit Price</th>
+                  <th className="text-right p-2">PnL %</th>
+                  <th className="text-right p-2">PnL $</th>
                 </tr>
               </thead>
               <tbody>
-                {trades.map((t, i) => (
-                  <tr key={i} className="border-t border-white/[0.02] hover:bg-white/[0.02]">
-                    <td className="p-1.5 text-slate-500">{i + 1}</td>
-                    <td className="p-1.5 text-slate-400">{new Date(t.entryTimestamp).toLocaleDateString()}</td>
-                    <td className="p-1.5 text-slate-400">{new Date(t.exitTimestamp).toLocaleDateString()}</td>
-                    <td className="p-1.5 text-slate-300 text-right">${t.entryPrice < 1 ? t.entryPrice.toFixed(6) : t.entryPrice.toFixed(2)}</td>
-                    <td className="p-1.5 text-slate-300 text-right">${t.exitPrice < 1 ? t.exitPrice.toFixed(6) : t.exitPrice.toFixed(2)}</td>
-                    <td className={`p-1.5 text-right font-medium ${t.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      <span className="inline-flex items-center gap-0.5">
-                        {t.pnlPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(2)}%
-                      </span>
-                    </td>
-                    <td className={`p-1.5 text-right ${t.pnlAbsolute >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {t.pnlAbsolute >= 0 ? "+" : ""}{t.pnlAbsolute.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {trades.map((t, i) => {
+                  const duration = Math.round((t.exitTimestamp - t.entryTimestamp) / (1000 * 60 * 60));
+                  const durationStr = duration < 24 ? `${duration}h` : `${Math.round(duration / 24)}d`;
+                  return (
+                    <tr key={i} className="border-t border-white/[0.03] hover:bg-white/[0.02]">
+                      <td className="p-2 text-slate-600">{i + 1}</td>
+                      <td className="p-2 text-slate-400">{new Date(t.entryTimestamp).toLocaleDateString()}</td>
+                      <td className="p-2 text-slate-400">{new Date(t.exitTimestamp).toLocaleDateString()}</td>
+                      <td className="p-2 text-slate-500">{durationStr}</td>
+                      <td className="p-2 text-slate-300 text-right font-mono">
+                        ${t.entryPrice < 1 ? t.entryPrice.toFixed(6) : t.entryPrice.toFixed(2)}
+                      </td>
+                      <td className="p-2 text-slate-300 text-right font-mono">
+                        ${t.exitPrice < 1 ? t.exitPrice.toFixed(6) : t.exitPrice.toFixed(2)}
+                      </td>
+                      <td className={`p-2 text-right font-medium ${t.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        <span className="inline-flex items-center gap-0.5">
+                          {t.pnlPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(2)}%
+                        </span>
+                      </td>
+                      <td className={`p-2 text-right font-mono ${t.pnlAbsolute >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {t.pnlAbsolute >= 0 ? "+" : ""}{t.pnlAbsolute.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
+  const colorMap: Record<string, string> = {
+    emerald: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+    red: "bg-red-500/10 border-red-500/20 text-red-400",
+    amber: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+    slate: "bg-slate-500/10 border-slate-500/20 text-slate-300",
+  };
+  return (
+    <div className={`rounded-lg border p-2.5 ${colorMap[color] || colorMap.slate}`}>
+      <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-0.5">{label}</div>
+      <div className="text-sm font-bold">{value}</div>
     </div>
   );
 }

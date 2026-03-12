@@ -73,12 +73,16 @@ export async function POST(req: NextRequest) {
         try {
           const result = runBacktest(candles, strategy.strategyConfig);
 
+          // totalPnl from engine is absolute dollars on $10k equity — convert to %
+          const INITIAL_EQUITY = 10000;
+          const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
+
           // Only include strategies that pass the minimum profit filter
-          if (result.totalPnl >= minProfitPercent) {
+          if (totalReturnPct >= minProfitPercent) {
             results.push({
               strategy,
               metrics: {
-                totalPnl: Math.round(result.totalPnl * 100) / 100,
+                totalPnl: Math.round(totalReturnPct * 100) / 100,
                 winRate: Math.round(result.winRate * 100) / 100,
                 maxDrawdown: Math.round(result.maxDrawdown * 100) / 100,
                 sharpeRatio: Math.round(result.sharpeRatio * 100) / 100,
