@@ -77,7 +77,6 @@ export function StrategyFunnel({
   // Stage 1 config (shared)
   const [timeframe, setTimeframe] = useState("1h");
   const [minProfitPercent, setMinProfitPercent] = useState(5);
-  const [positionSizePercent, setPositionSizePercent] = useState(10);
 
   // Algorithmic mode config
   const [maxStrategies, setMaxStrategies] = useState(1000);
@@ -89,6 +88,8 @@ export function StrategyFunnel({
   const [aiCount, setAiCount] = useState(10);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
+
+  const positionSizePercent = 10; // fixed default
 
   // Stage 2 state
   const [generated, setGenerated] = useState<GeneratedStrategy[]>([]);
@@ -368,7 +369,7 @@ export function StrategyFunnel({
           </div>
 
           {/* Shared config */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-slate-500 block mb-1">Timeframe</label>
               <select
@@ -383,25 +384,12 @@ export function StrategyFunnel({
             </div>
 
             <div>
-              <label className="text-[11px] text-slate-500 block mb-1">Min Profit %</label>
+              <label className="text-[11px] text-slate-500 block mb-1">Min Total Return %</label>
               <input
                 type="number"
                 value={minProfitPercent}
                 onChange={(e) => setMinProfitPercent(Number(e.target.value))}
                 min={0}
-                step={1}
-                className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-500 block mb-1">Position Size %</label>
-              <input
-                type="number"
-                value={positionSizePercent}
-                onChange={(e) => setPositionSizePercent(Number(e.target.value))}
-                min={1}
-                max={100}
                 step={1}
                 className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
               />
@@ -483,7 +471,7 @@ export function StrategyFunnel({
                 <input
                   type="range"
                   min={5}
-                  max={50}
+                  max={30}
                   step={5}
                   value={aiCount}
                   onChange={(e) => setAiCount(Number(e.target.value))}
@@ -492,7 +480,7 @@ export function StrategyFunnel({
                 <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
                   <span>5</span>
                   <span>~${(aiCount * 0.003).toFixed(3)} estimated</span>
-                  <span>50</span>
+                  <span>30</span>
                 </div>
               </div>
 

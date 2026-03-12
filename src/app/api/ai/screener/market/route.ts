@@ -21,7 +21,7 @@ const CACHE_TTL = 5 * 60_000; // 5 min
 // Top coins to scan (by typical volume on ByBit)
 const TOP_SYMBOLS = [
   "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "MATIC/USDT",
+  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "POL/USDT",
   "NEAR/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "FIL/USDT",
   "APT/USDT", "ARB/USDT", "OP/USDT", "INJ/USDT", "SUI/USDT",
 ];

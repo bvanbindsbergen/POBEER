@@ -11,7 +11,7 @@ import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 
 const TOP_SYMBOLS = [
   "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "MATIC/USDT",
+  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "POL/USDT",
   "NEAR/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "FIL/USDT",
   "APT/USDT", "ARB/USDT", "OP/USDT", "INJ/USDT", "SUI/USDT",
 ];
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth();
 
     const body = await req.json();
-    const count: number = Math.min(body.count || 10, 50);
+    const count: number = Math.min(body.count || 10, 30);
     const userPrompt: string = body.prompt || "";
     const timeframe: string = body.timeframe || "1h";
     const symbols: string[] = body.symbols?.length ? body.symbols : TOP_SYMBOLS.slice(0, 10);
@@ -96,9 +96,12 @@ export async function POST(req: NextRequest) {
 
     const client = new Anthropic({ apiKey });
 
+    // Scale max_tokens: ~80 tokens per strategy for compact JSON
+    const maxTokens = Math.min(Math.max(count * 150, 2048), 16384);
+
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       messages: [
         {
           role: "user",
@@ -119,28 +122,17 @@ Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator comparisons, value can be: {"indicator": "ema", "params": {"period": 21}}
 
-Respond ONLY with a JSON array of exactly ${count} objects. No markdown, no explanation. Each object:
-{
-  "name": "Short name e.g. 'SOL RSI Bounce + MACD'",
-  "symbol": "PAIR/USDT",
-  "reasoning": "1-2 sentence rationale",
-  "sourceSignal": "short label for entry type",
-  "tags": ["tag1", "tag2"],
-  "strategyConfig": {
-    "entryConditions": [{"indicator": "rsi", "operator": "<", "value": 30, "params": {"period": 14}}],
-    "exitConditions": [{"indicator": "rsi", "operator": ">", "value": 70}],
-    "stopLossPercent": number,
-    "takeProfitPercent": number,
-    "positionSizePercent": ${positionSizePercent}
-  }
-}
+Respond ONLY with a JSON array of exactly ${count} objects. No markdown, no explanation, no whitespace padding. Keep JSON compact.
+Each object:
+{"name":"SOL RSI Bounce","symbol":"SOL/USDT","sourceSignal":"RSI<30","tags":["rsi","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"rsi","operator":"<","value":30}],"exitConditions":[{"indicator":"rsi","operator":">","value":70}],"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}}}
 
 RULES:
-- Vary strategies across different coins and indicator combinations
-- Include a mix of risk levels (tight SL 2-3% to wide 8-12%)
-- Every strategy MUST have at least 1 entry condition and 1 exit condition
-- stopLossPercent and takeProfitPercent are required numbers
-- takeProfitPercent should be > stopLossPercent
+- Vary across different coins and indicator combinations
+- Mix risk levels (tight SL 2-3% to wide 8-12%)
+- Every strategy MUST have entryConditions and exitConditions (non-empty arrays)
+- takeProfitPercent > stopLossPercent always
+- Keep names short (under 30 chars)
+- Output compact JSON (no pretty-printing)
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         },
       ],
@@ -152,7 +144,7 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
       .map((b) => b.text)
       .join("");
 
-    let rawStrategies: Array<{
+    type RawStrategy = {
       name: string;
       symbol: string;
       reasoning?: string;
@@ -165,16 +157,34 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         takeProfitPercent: number;
         positionSizePercent: number;
       };
-    }> = [];
+    };
+
+    let rawStrategies: RawStrategy[] = [];
 
     try {
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         rawStrategies = JSON.parse(jsonMatch[0]);
       }
-    } catch (e) {
-      console.error("[Funnel AI] Failed to parse response:", e, text);
-      return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
+    } catch {
+      // If full array parse fails, try to extract individual JSON objects
+      console.warn("[Funnel AI] Full array parse failed, attempting partial recovery");
+      const objectMatches = text.matchAll(/\{[^{}]*"strategyConfig"\s*:\s*\{[^}]*"entryConditions"[\s\S]*?"positionSizePercent"\s*:\s*\d+\s*\}\s*\}/g);
+      for (const match of objectMatches) {
+        try {
+          const obj = JSON.parse(match[0]) as RawStrategy;
+          if (obj.name && obj.symbol && obj.strategyConfig?.entryConditions) {
+            rawStrategies.push(obj);
+          }
+        } catch {
+          // Skip unparseable objects
+        }
+      }
+      if (rawStrategies.length === 0) {
+        console.error("[Funnel AI] Could not parse any strategies from response");
+        return NextResponse.json({ error: "Failed to parse AI response. Try generating fewer strategies." }, { status: 500 });
+      }
+      console.log(`[Funnel AI] Recovered ${rawStrategies.length} of ${count} strategies`);
     }
 
     // Convert to GeneratedStrategy format
