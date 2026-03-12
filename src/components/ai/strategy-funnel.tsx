@@ -374,29 +374,29 @@ export function StrategyFunnel({
           </h3>
 
           {/* Mode toggle */}
-          <div className="flex gap-1 p-0.5 rounded-lg bg-[#0d1117] border border-white/[0.06] w-fit">
+          <div className="flex gap-1 p-0.5 rounded-lg bg-[#0d1117] border border-white/[0.06] w-full sm:w-fit">
             <button
               onClick={() => setMode("algo")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === "algo"
                   ? "bg-emerald-500/15 text-emerald-400"
                   : "text-slate-500 hover:text-slate-300"
               }`}
             >
               <Cpu className="w-3.5 h-3.5" />
-              Algorithmic
+              Algo
               <span className="text-[9px] opacity-60">FREE</span>
             </button>
             <button
               onClick={() => setMode("ai")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === "ai"
                   ? "bg-violet-500/15 text-violet-400"
                   : "text-slate-500 hover:text-slate-300"
               }`}
             >
               <Brain className="w-3.5 h-3.5" />
-              AI (Claude)
+              AI
               <span className="text-[9px] opacity-60">~$0.01-0.05</span>
             </button>
           </div>
@@ -449,7 +449,7 @@ export function StrategyFunnel({
                 </label>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-1">
                     Max Strategies: {maxStrategies}
@@ -624,7 +624,7 @@ export function StrategyFunnel({
             <Button
               onClick={() => generateMutation.mutate()}
               disabled={generateMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {generateMutation.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -637,7 +637,7 @@ export function StrategyFunnel({
             <Button
               onClick={() => aiGenerateMutation.mutate()}
               disabled={aiGenerateMutation.isPending}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white"
             >
               {aiGenerateMutation.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -703,8 +703,8 @@ export function StrategyFunnel({
           </div>
 
           {/* Strategy table */}
-          <div className="max-h-80 overflow-y-auto rounded-lg border border-white/[0.04]">
-            <table className="w-full text-xs">
+          <div className="max-h-80 overflow-auto rounded-lg border border-white/[0.04]">
+            <table className="w-full text-xs min-w-[500px]">
               <thead className="bg-[#0d1117] sticky top-0">
                 <tr className="text-slate-500">
                   <th className="text-left p-2 w-8">
@@ -764,7 +764,7 @@ export function StrategyFunnel({
           </div>
 
           {/* Backtest controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
             <div>
               <label className="text-[11px] text-slate-500 block mb-1">Backtest Period (days)</label>
               <input
@@ -773,14 +773,14 @@ export function StrategyFunnel({
                 onChange={(e) => setDaysBack(Number(e.target.value))}
                 min={7}
                 max={365}
-                className="w-24 rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                className="w-full sm:w-24 rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
               />
             </div>
 
             <Button
               onClick={() => backtestMutation.mutate()}
               disabled={backtestMutation.isPending || selected.size === 0}
-              className="bg-cyan-600 hover:bg-cyan-700 text-white mt-4"
+              className="w-full sm:w-auto bg-cyan-600 hover:bg-cyan-700 text-white"
             >
               {backtestMutation.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -852,7 +852,7 @@ export function StrategyFunnel({
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-white/[0.04]">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs min-w-[600px]">
                 <thead className="bg-[#0d1117]">
                   <tr className="text-slate-500">
                     <th className="text-left p-2">Name</th>

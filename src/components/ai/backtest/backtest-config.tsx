@@ -145,14 +145,14 @@ export function BacktestConfig({
           </Button>
         </div>
         {conditions.map((cond, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-2">
             <Select
               value={cond.indicator}
               onValueChange={(v) =>
                 updateCondition(conditions, setConditions, i, "indicator", v)
               }
             >
-              <SelectTrigger className="w-[140px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
+              <SelectTrigger className="w-[calc(50%-4px)] sm:w-[140px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -169,7 +169,7 @@ export function BacktestConfig({
                 updateCondition(conditions, setConditions, i, "operator", v)
               }
             >
-              <SelectTrigger className="w-[130px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
+              <SelectTrigger className="w-[calc(50%-4px)] sm:w-[130px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -192,7 +192,7 @@ export function BacktestConfig({
                   Number(e.target.value)
                 )
               }
-              className="w-20 h-8 text-xs bg-[#070b12] border-white/[0.06]"
+              className="flex-1 min-w-[60px] sm:w-20 sm:flex-none h-8 text-xs bg-[#070b12] border-white/[0.06]"
               placeholder="Value"
             />
             {conditions.length > 1 && (
@@ -203,7 +203,7 @@ export function BacktestConfig({
                 onClick={() =>
                   setConditions(conditions.filter((_, j) => j !== i))
                 }
-                className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                className="h-8 w-8 p-0 text-red-400 hover:text-red-300 flex-shrink-0"
               >
                 <Trash2 className="w-3 h-3" />
               </Button>
@@ -275,7 +275,7 @@ export function BacktestConfig({
       </div>
 
       {/* Risk Management */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3">
         <div>
           <Label className="text-xs text-slate-400">Stop Loss %</Label>
           <Input

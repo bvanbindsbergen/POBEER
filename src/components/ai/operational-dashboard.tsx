@@ -139,23 +139,23 @@ export function OperationalDashboard() {
       )}
 
       {/* Stats + Kill Switch */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-4">
-          <div className="flex items-center gap-1.5 text-sm">
-            <Activity className="w-4 h-4 text-emerald-400" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
             <span className="text-slate-400">Active:</span>
             <span className="font-medium text-slate-200">{activeCount}</span>
           </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <DollarSign className="w-4 h-4 text-cyan-400" />
-            <span className="text-slate-400">Total P&L:</span>
+          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+            <span className="text-slate-400">P&L:</span>
             <span className={`font-medium ${totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
               ${totalPnl.toFixed(2)}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <span className="text-slate-400">In Position:</span>
+          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+            <span className="text-slate-400">In Pos:</span>
             <span className="font-medium text-slate-200">{inPositionCount}</span>
           </div>
         </div>
@@ -164,7 +164,7 @@ export function OperationalDashboard() {
             size="sm"
             variant="outline"
             onClick={() => setKillSwitchConfirm(true)}
-            className="border-red-500/20 text-red-400 hover:bg-red-500/10 h-7 text-xs"
+            className="border-red-500/20 text-red-400 hover:bg-red-500/10 h-7 text-xs w-full sm:w-auto"
           >
             <AlertOctagon className="w-3.5 h-3.5 mr-1" />
             STOP ALL

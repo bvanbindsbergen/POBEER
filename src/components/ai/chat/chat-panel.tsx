@@ -183,9 +183,9 @@ export function ChatPanel({ onStrategyAction }: ChatPanelProps) {
   }, [input, isStreaming, activeConversation, queryClient]);
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] gap-4">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-12rem)] gap-2 md:gap-4">
       {/* Conversation Sidebar */}
-      <div className="w-56 flex-shrink-0 flex flex-col bg-[#0d1117] rounded-xl border border-white/[0.06] overflow-hidden">
+      <div className="md:w-56 flex-shrink-0 flex flex-col bg-[#0d1117] rounded-xl border border-white/[0.06] overflow-hidden max-h-32 md:max-h-none">
         <div className="p-3 border-b border-white/[0.06]">
           <Button
             size="sm"

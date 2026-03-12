@@ -45,7 +45,7 @@ export function PumpScreener() {
   return (
     <div className="space-y-3">
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <label className="text-[11px] text-slate-500">Min Price %</label>
           <select

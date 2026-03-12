@@ -328,7 +328,7 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
 
                 {/* Actions */}
                 {!feedbackedIds.has(i) && feedbackIndex !== i && (
-                  <div className="flex gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
                     <Button
                       size="sm"
                       variant="outline"
@@ -341,7 +341,7 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
                           saveStrategy.mutate({ strategy: s, index: i });
                         }
                       }}
-                      className="h-7 text-xs border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
+                      className="h-7 text-[11px] border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10"
                     >
                       <ThumbsUp className="w-3 h-3 mr-1" />
                       Approve
@@ -354,7 +354,7 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
                         setFeedbackIndex(i);
                         setFeedbackReason("");
                       }}
-                      className="h-7 text-xs border-red-500/20 text-red-400 hover:bg-red-500/10"
+                      className="h-7 text-[11px] border-red-500/20 text-red-400 hover:bg-red-500/10"
                     >
                       <ThumbsDown className="w-3 h-3 mr-1" />
                       Decline
@@ -363,7 +363,7 @@ export function StrategyDiscovery({ onBacktest }: StrategyDiscoveryProps) {
                       size="sm"
                       variant="outline"
                       onClick={() => onBacktest(s)}
-                      className="h-7 text-xs border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10"
+                      className="h-7 text-[11px] border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/10"
                     >
                       <FlaskConical className="w-3 h-3 mr-1" />
                       Backtest

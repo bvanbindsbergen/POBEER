@@ -318,67 +318,72 @@ export default function AIPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-[#111827] border border-white/[0.06] mb-4">
-          <TabsTrigger
-            value="chat"
-            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-sm"
-          >
-            <MessageSquare className="w-4 h-4 mr-1.5" />
-            Chat
-          </TabsTrigger>
-          <TabsTrigger
-            value="strategies"
-            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-sm"
-          >
-            <Lightbulb className="w-4 h-4 mr-1.5" />
-            Strategies
-            {strategies.length > 0 && (
-              <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">
-                {strategies.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger
-            value="backtests"
-            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-sm"
-          >
-            <FlaskConical className="w-4 h-4 mr-1.5" />
-            Backtests
-          </TabsTrigger>
-          <TabsTrigger
-            value="funnel"
-            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-sm"
-          >
-            <Filter className="w-4 h-4 mr-1.5" />
-            Funnel
-          </TabsTrigger>
-          <TabsTrigger
-            value="live"
-            className="data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-400 text-sm"
-          >
-            <Zap className="w-4 h-4 mr-1.5" />
-            Live
-            {activeOpCount > 0 && (
-              <Badge className="ml-1.5 text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-400 border-amber-500/30">
-                {activeOpCount}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger
-            value="screeners"
-            className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400 text-sm"
-          >
-            <Radar className="w-4 h-4 mr-1.5" />
-            Screeners
-          </TabsTrigger>
-          <TabsTrigger
-            value="grid"
-            className="data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-400 text-sm"
-          >
-            <Grid3x3 className="w-4 h-4 mr-1.5" />
-            Grid Bots
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-4 px-4 mb-4 scrollbar-none">
+          <TabsList className="bg-[#111827] border border-white/[0.06] w-max md:w-auto">
+            <TabsTrigger
+              value="chat"
+              className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              Chat
+            </TabsTrigger>
+            <TabsTrigger
+              value="strategies"
+              className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Lightbulb className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              <span className="hidden sm:inline">Strategies</span>
+              <span className="sm:hidden">Strats</span>
+              {strategies.length > 0 && (
+                <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">
+                  {strategies.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="backtests"
+              className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              <span className="hidden sm:inline">Backtests</span>
+              <span className="sm:hidden">BT</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="funnel"
+              className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              Funnel
+            </TabsTrigger>
+            <TabsTrigger
+              value="live"
+              className="data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              Live
+              {activeOpCount > 0 && (
+                <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-400 border-amber-500/30">
+                  {activeOpCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="screeners"
+              className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Radar className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              <span className="hidden sm:inline">Screeners</span>
+              <span className="sm:hidden">Scan</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="grid"
+              className="data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-400 text-xs sm:text-sm px-2 sm:px-3"
+            >
+              <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />
+              Grid
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Chat Tab */}
         <TabsContent value="chat" className="mt-0">
@@ -407,7 +412,7 @@ export default function AIPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {strategies.map(
                 (s: {
                   id: string;
