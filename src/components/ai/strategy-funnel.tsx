@@ -108,6 +108,7 @@ export function StrategyFunnel({
   const [aiExpand, setAiExpand] = useState(false);
   const [aiTargetTotal, setAiTargetTotal] = useState(1000);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [aiNoRiskManagement, setAiNoRiskManagement] = useState(false);
   const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
 
   const positionSizePercent = 10;
@@ -181,7 +182,8 @@ export function StrategyFunnel({
           targetTotal: aiExpand ? aiTargetTotal : aiBaseCount,
           prompt: aiPrompt,
           timeframe,
-          positionSizePercent,
+          positionSizePercent: aiNoRiskManagement ? 100 : positionSizePercent,
+          noRiskManagement: aiNoRiskManagement,
           ...(aiExpand ? { slRange: SL_PRESETS[slPreset], tpRange: TP_PRESETS[tpPreset] } : {}),
         }),
       });
@@ -509,7 +511,23 @@ export function StrategyFunnel({
                 </div>
               </div>
 
+              {/* No risk management toggle */}
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aiNoRiskManagement}
+                  onChange={(e) => {
+                    setAiNoRiskManagement(e.target.checked);
+                    if (e.target.checked) setAiExpand(false); // disable expand when no RM
+                  }}
+                  className="rounded border-slate-600 accent-amber-500"
+                />
+                No risk management
+                <span className="text-[9px] text-slate-600">(no SL/TP, 100% position size)</span>
+              </label>
+
               {/* Expand toggle */}
+              {!aiNoRiskManagement && (
               <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
                 <input
                   type="checkbox"
@@ -519,6 +537,7 @@ export function StrategyFunnel({
                 />
                 Expand with SL/TP variations to generate more strategies
               </label>
+              )}
 
               {aiExpand && (
                 <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 p-3 space-y-3">

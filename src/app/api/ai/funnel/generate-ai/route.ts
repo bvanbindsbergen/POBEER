@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     const timeframe: string = body.timeframe || "1h";
     const symbols: string[] = body.symbols?.length ? body.symbols : TOP_SYMBOLS.slice(0, 10);
     const positionSizePercent: number = body.positionSizePercent || 10;
+    const noRiskManagement: boolean = body.noRiskManagement || false;
     const slRange: number[] = body.slRange || [2, 3, 5, 8];
     const tpRange: number[] = body.tpRange || [3, 5, 8, 12, 15];
 
@@ -102,15 +103,17 @@ export async function POST(req: NextRequest) {
     // Scale max_tokens: ~80 tokens per strategy for compact JSON
     const maxTokens = Math.min(Math.max(aiBaseCount * 150, 2048), 16384);
 
+    const riskNote = noRiskManagement
+      ? `\nRISK MANAGEMENT: DISABLED. Do NOT include stopLossPercent or takeProfitPercent. Set positionSizePercent to 100. Focus purely on entry/exit signal quality.`
+      : `\nInclude stopLossPercent, takeProfitPercent, and positionSizePercent: ${positionSizePercent} in each strategy.`;
+
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
       messages: [
         {
           role: "user",
-          content: `You are designing trading strategies that will be backtested over the last 90 days on ${timeframe} candles. The goal is to find strategies that return AT LEAST 5% total profit over this period. Think carefully about what actually works in recent market conditions.
-
-Generate exactly ${aiBaseCount} HIGH-QUALITY trading strategies. Each must be specific and backtestable.
+          content: `Generate exactly ${aiBaseCount} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}
 
@@ -119,14 +122,7 @@ ${JSON.stringify(technicals, null, 2)}
 ${overviewStr}
 
 Available symbols: ${symbolsToScan.join(", ")}
-
-STRATEGY DESIGN PRINCIPLES:
-- Use MULTIPLE entry conditions (2-3) for higher-quality signals — single-indicator strategies rarely work
-- Combine trend + momentum indicators (e.g., EMA cross + RSI confirmation)
-- Use "crosses_above"/"crosses_below" for entries — they trigger on momentum shifts, not static levels
-- Set TP to 2-3x the SL for positive expectancy (e.g., SL 3% → TP 6-9%)
-- Prefer coins showing clear trends or oversold bounces in the data above
-- Avoid entries that rarely trigger (e.g., RSI < 15 is too extreme)
+${riskNote}
 
 Available indicators: rsi, macd, bollinger, ema, sma, stochastic, atr
 Available operators: >, <, >=, <=, crosses_above, crosses_below
@@ -135,12 +131,10 @@ For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":2
 
 Respond ONLY with a JSON array. No markdown. Compact JSON.
 Each object:
-{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}],"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}}}
+{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
 
-HARD RULES:
-- 2-3 entry conditions per strategy (combine indicators)
-- 1-2 exit conditions
-- takeProfitPercent must be >= 2x stopLossPercent
+RULES:
+- 1-3 entry conditions, 1-2 exit conditions
 - Vary across coins AND indicator combinations
 - Names under 30 chars, compact JSON
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
@@ -163,8 +157,8 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
       strategyConfig: {
         entryConditions: Array<Record<string, unknown>>;
         exitConditions: Array<Record<string, unknown>>;
-        stopLossPercent: number;
-        takeProfitPercent: number;
+        stopLossPercent?: number;
+        takeProfitPercent?: number;
         positionSizePercent: number;
       };
     };
@@ -206,12 +200,14 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         name: s.name,
         entryConditions: (s.strategyConfig?.entryConditions || []) as unknown as GeneratedStrategy["strategyConfig"]["entryConditions"],
         exitConditions: (s.strategyConfig?.exitConditions || []) as unknown as GeneratedStrategy["strategyConfig"]["exitConditions"],
-        stopLossPercent: s.strategyConfig?.stopLossPercent,
-        takeProfitPercent: s.strategyConfig?.takeProfitPercent,
-        positionSizePercent: s.strategyConfig?.positionSizePercent || positionSizePercent,
+        ...(noRiskManagement ? {} : {
+          stopLossPercent: s.strategyConfig?.stopLossPercent,
+          takeProfitPercent: s.strategyConfig?.takeProfitPercent,
+        }),
+        positionSizePercent: noRiskManagement ? 100 : (s.strategyConfig?.positionSizePercent || positionSizePercent),
       },
       sourceSignal: s.sourceSignal || "AI",
-      tags: [...(s.tags || []), "ai-generated"],
+      tags: [...(s.tags || []), "ai-generated", ...(noRiskManagement ? ["no-rm"] : [])],
     }));
 
     // If targetTotal > base count, expand with SL/TP variations
