@@ -178,13 +178,10 @@ export function StrategyFunnel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          count: aiBaseCount,
-          targetTotal: aiTargetTotal,
+          count: aiTargetTotal,
           prompt: aiPrompt,
           timeframe,
           positionSizePercent,
-          slRange: SL_PRESETS[slPreset],
-          tpRange: TP_PRESETS[tpPreset],
         }),
       });
       if (!res.ok) {
@@ -492,56 +489,26 @@ export function StrategyFunnel({
           {mode === "ai" && (
             <div className="space-y-3">
               <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 px-3 py-2 text-[11px] text-slate-400">
-                Claude generates <span className="text-violet-400 font-medium">{aiBaseCount} unique ideas</span> from live market data,
-                then expands to <span className="text-violet-400 font-medium">{aiTargetTotal} strategies</span> with SL/TP variations.
-                Cost: ~$0.03-0.05 per run.
+                Claude analyzes live market data and generates <span className="text-violet-400 font-medium">{aiTargetTotal} unique strategies</span> with
+                optimized entry/exit conditions and SL/TP per strategy. Cost: ~$0.03-0.05 per run.
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">
-                    Total strategies: {aiTargetTotal}
-                  </label>
-                  <input
-                    type="range"
-                    min={10}
-                    max={5000}
-                    step={10}
-                    value={aiTargetTotal}
-                    onChange={(e) => setAiTargetTotal(Number(e.target.value))}
-                    className="w-full accent-violet-500"
-                  />
-                  <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
-                    <span>10</span>
-                    <span>5000</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">SL Range</label>
-                    <select
-                      value={slPreset}
-                      onChange={(e) => setSlPreset(e.target.value as keyof typeof SL_PRESETS)}
-                      className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
-                    >
-                      {Object.entries(SL_PRESETS).map(([name, vals]) => (
-                        <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">TP Range</label>
-                    <select
-                      value={tpPreset}
-                      onChange={(e) => setTpPreset(e.target.value as keyof typeof TP_PRESETS)}
-                      className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
-                    >
-                      {Object.entries(TP_PRESETS).map(([name, vals]) => (
-                        <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
-                      ))}
-                    </select>
-                  </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">
+                  Number of strategies: {aiTargetTotal}
+                </label>
+                <input
+                  type="range"
+                  min={5}
+                  max={30}
+                  step={1}
+                  value={aiTargetTotal}
+                  onChange={(e) => setAiTargetTotal(Number(e.target.value))}
+                  className="w-full accent-violet-500"
+                />
+                <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
+                  <span>5</span>
+                  <span>30</span>
                 </div>
               </div>
 
@@ -560,7 +527,7 @@ export function StrategyFunnel({
 
               {aiCost && (
                 <div className="text-[10px] text-slate-500">
-                  Last run: {aiBaseGenerated} AI ideas → {generated.length} strategies | {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
+                  Last run: {generated.length} strategies | {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
                 </div>
               )}
             </div>
