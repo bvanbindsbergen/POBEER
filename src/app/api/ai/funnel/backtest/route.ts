@@ -3,6 +3,9 @@ import { requireRole } from "@/lib/auth";
 import { fetchCandles } from "@/lib/ai/data/candles";
 import { runBacktest } from "@/lib/ai/backtest/engine";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
+import type { Trade, EquityPoint } from "@/lib/ai/backtest/types";
+
+export const maxDuration = 120; // allow up to 2 min for large batches
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,16 +31,19 @@ export async function POST(req: NextRequest) {
       bySymbol.set(s.symbol, list);
     }
 
-    // Fetch candles per symbol (key optimization)
+    // Fetch candles per symbol IN PARALLEL (key fix for large batches)
+    const symbolList = [...bySymbol.keys()];
+    const candleResults = await Promise.allSettled(
+      symbolList.map((symbol) => fetchCandles(symbol, timeframe, daysBack))
+    );
+
     const candleCache = new Map<string, Awaited<ReturnType<typeof fetchCandles>>>();
-    for (const symbol of bySymbol.keys()) {
-      try {
-        const candles = await fetchCandles(symbol, timeframe, daysBack);
-        if (candles.length >= 30) {
-          candleCache.set(symbol, candles);
-        }
-      } catch (err) {
-        console.error(`[Funnel Backtest] Failed to fetch candles for ${symbol}:`, err);
+    for (let i = 0; i < symbolList.length; i++) {
+      const result = candleResults[i];
+      if (result.status === "fulfilled" && result.value.length >= 30) {
+        candleCache.set(symbolList[i], result.value);
+      } else if (result.status === "rejected") {
+        console.error(`[Funnel Backtest] Failed to fetch candles for ${symbolList[i]}:`, result.reason);
       }
     }
 
@@ -52,6 +58,8 @@ export async function POST(req: NextRequest) {
         profitFactor: number;
         totalTrades: number;
       };
+      trades: Trade[];
+      equityCurve: EquityPoint[];
     }[] = [];
 
     let totalTested = 0;
@@ -77,6 +85,9 @@ export async function POST(req: NextRequest) {
                 profitFactor: Math.round(result.profitFactor * 100) / 100,
                 totalTrades: result.totalTrades,
               },
+              trades: result.trades,
+              // Downsample equity curve to max 200 points to keep response size manageable
+              equityCurve: downsampleEquity(result.equityCurve, 200),
             });
           }
         } catch (err) {
@@ -107,4 +118,16 @@ export async function POST(req: NextRequest) {
     console.error("[Funnel Backtest] Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+function downsampleEquity(curve: EquityPoint[], maxPoints: number): EquityPoint[] {
+  if (curve.length <= maxPoints) return curve;
+  const step = curve.length / maxPoints;
+  const result: EquityPoint[] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    result.push(curve[Math.floor(i * step)]);
+  }
+  // Always include the last point
+  result.push(curve[curve.length - 1]);
+  return result;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import {
   Trophy,
   Loader2,
   ChevronRight,
+  ChevronDown,
   Save,
   Zap,
   ArrowUpDown,
@@ -17,6 +18,8 @@ import {
   Square,
   Brain,
   Cpu,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 
@@ -35,9 +38,25 @@ interface BacktestMetrics {
   totalTrades: number;
 }
 
+interface TradeDetail {
+  entryTimestamp: number;
+  exitTimestamp: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnlPercent: number;
+  pnlAbsolute: number;
+}
+
+interface EquityPoint {
+  timestamp: number;
+  equity: number;
+}
+
 interface FunnelResult {
   strategy: GeneratedStrategy;
   metrics: BacktestMetrics;
+  trades?: TradeDetail[];
+  equityCurve?: EquityPoint[];
 }
 
 type SortField = "totalPnl" | "winRate" | "sharpeRatio" | "maxDrawdown" | "profitFactor" | "totalTrades";
@@ -105,6 +124,7 @@ export function StrategyFunnel({
   } | null>(null);
   const [sortField, setSortField] = useState<SortField>("totalPnl");
   const [sortAsc, setSortAsc] = useState(false);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   // Generate mutation
   const generateMutation = useMutation({
@@ -753,57 +773,74 @@ export function StrategyFunnel({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedResults.map((r, i) => (
-                    <tr
-                      key={r.strategy.id}
-                      className={`border-t border-white/[0.03] hover:bg-white/[0.02] ${
-                        i < 3 ? "bg-amber-500/5" : ""
-                      }`}
-                    >
-                      <td className="p-2 text-slate-300 font-medium truncate max-w-[200px]">
-                        {i < 3 && <span className="text-amber-400 mr-1">#{i + 1}</span>}
-                        {r.strategy.name}
-                      </td>
-                      <td className="p-2 text-slate-400">{r.strategy.symbol.replace("/USDT", "")}</td>
-                      <td className={`p-2 font-medium ${r.metrics.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {r.metrics.totalPnl >= 0 ? "+" : ""}{r.metrics.totalPnl.toFixed(1)}%
-                      </td>
-                      <td className="p-2 text-slate-300">{r.metrics.winRate.toFixed(0)}%</td>
-                      <td className="p-2 text-slate-300">{r.metrics.sharpeRatio.toFixed(2)}</td>
-                      <td className="p-2 text-red-400">{r.metrics.maxDrawdown.toFixed(1)}%</td>
-                      <td className="p-2 text-slate-300">{r.metrics.profitFactor.toFixed(2)}</td>
-                      <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
-                      <td className="p-2">
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => saveMutation.mutate(r)}
-                            className="p-1 rounded text-slate-500 hover:text-emerald-400 transition-colors"
-                            title="Save Strategy"
-                          >
-                            <Save className="w-3.5 h-3.5" />
-                          </button>
-                          {onActivate && (
-                            <button
-                              onClick={() =>
-                                onActivate({
-                                  id: r.strategy.id,
-                                  name: r.strategy.name,
-                                  symbol: r.strategy.symbol,
-                                  timeframe,
-                                  strategyConfig: r.strategy.strategyConfig,
-                                  sourceType: "strategy",
-                                })
-                              }
-                              className="p-1 rounded text-slate-500 hover:text-amber-400 transition-colors"
-                              title="Activate"
-                            >
-                              <Zap className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {sortedResults.map((r, i) => {
+                    const isExpanded = expandedRow === r.strategy.id;
+                    return (
+                      <React.Fragment key={r.strategy.id}>
+                        <tr
+                          className={`border-t border-white/[0.03] hover:bg-white/[0.02] cursor-pointer ${
+                            i < 3 ? "bg-amber-500/5" : ""
+                          } ${isExpanded ? "bg-white/[0.03]" : ""}`}
+                          onClick={() => setExpandedRow(isExpanded ? null : r.strategy.id)}
+                        >
+                          <td className="p-2 text-slate-300 font-medium truncate max-w-[200px]">
+                            <span className="inline-flex items-center gap-1">
+                              {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-500" /> : <ChevronRight className="w-3 h-3 text-slate-600" />}
+                              {i < 3 && <span className="text-amber-400">#{i + 1}</span>}
+                              {r.strategy.name}
+                            </span>
+                          </td>
+                          <td className="p-2 text-slate-400">{r.strategy.symbol.replace("/USDT", "")}</td>
+                          <td className={`p-2 font-medium ${r.metrics.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {r.metrics.totalPnl >= 0 ? "+" : ""}{r.metrics.totalPnl.toFixed(1)}%
+                          </td>
+                          <td className="p-2 text-slate-300">{r.metrics.winRate.toFixed(0)}%</td>
+                          <td className="p-2 text-slate-300">{r.metrics.sharpeRatio.toFixed(2)}</td>
+                          <td className="p-2 text-red-400">{r.metrics.maxDrawdown.toFixed(1)}%</td>
+                          <td className="p-2 text-slate-300">{r.metrics.profitFactor.toFixed(2)}</td>
+                          <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
+                          <td className="p-2">
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => saveMutation.mutate(r)}
+                                className="p-1 rounded text-slate-500 hover:text-emerald-400 transition-colors"
+                                title="Save Strategy"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                              </button>
+                              {onActivate && (
+                                <button
+                                  onClick={() =>
+                                    onActivate({
+                                      id: r.strategy.id,
+                                      name: r.strategy.name,
+                                      symbol: r.strategy.symbol,
+                                      timeframe,
+                                      strategyConfig: r.strategy.strategyConfig,
+                                      sourceType: "strategy",
+                                    })
+                                  }
+                                  className="p-1 rounded text-slate-500 hover:text-amber-400 transition-colors"
+                                  title="Activate"
+                                >
+                                  <Zap className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expanded detail row */}
+                        {isExpanded && (
+                          <tr className="border-t border-white/[0.02]">
+                            <td colSpan={9} className="p-0">
+                              <StrategyDetail result={r} />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -841,5 +878,138 @@ function SortHeader({
         )}
       </button>
     </th>
+  );
+}
+
+function StrategyDetail({ result }: { result: FunnelResult }) {
+  const { strategy, trades, equityCurve } = result;
+  const config = strategy.strategyConfig;
+
+  // Mini equity chart using SVG
+  const chartPoints = useMemo(() => {
+    if (!equityCurve || equityCurve.length < 2) return null;
+    const minEq = Math.min(...equityCurve.map((p) => p.equity));
+    const maxEq = Math.max(...equityCurve.map((p) => p.equity));
+    const range = maxEq - minEq || 1;
+    const w = 400;
+    const h = 80;
+    return equityCurve
+      .map((p, i) => {
+        const x = (i / (equityCurve.length - 1)) * w;
+        const y = h - ((p.equity - minEq) / range) * h;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [equityCurve]);
+
+  return (
+    <div className="bg-[#0a0f1a] p-4 space-y-4">
+      {/* Strategy config summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Entry Conditions</div>
+          <div className="space-y-0.5">
+            {config.entryConditions.map((c, i) => (
+              <div key={i} className="text-[11px] text-emerald-400 flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0" />
+                {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Exit Conditions</div>
+          <div className="space-y-0.5">
+            {config.exitConditions.map((c, i) => (
+              <div key={i} className="text-[11px] text-red-400 flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
+                {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Risk Management</div>
+          <div className="text-[11px] text-red-400">SL: {config.stopLossPercent || "—"}%</div>
+          <div className="text-[11px] text-emerald-400">TP: {config.takeProfitPercent || "—"}%</div>
+          <div className="text-[11px] text-slate-400">Size: {config.positionSizePercent}%</div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Tags</div>
+          <div className="flex flex-wrap gap-1">
+            {strategy.tags.map((t) => (
+              <Badge key={t} variant="outline" className="text-[9px] px-1 py-0">{t}</Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Equity curve */}
+      {chartPoints && (
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Equity Curve</div>
+          <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-2">
+            <svg viewBox="0 0 400 80" className="w-full h-20" preserveAspectRatio="none">
+              <polyline
+                points={chartPoints}
+                fill="none"
+                stroke={result.metrics.totalPnl >= 0 ? "#34d399" : "#f87171"}
+                strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            {equityCurve && equityCurve.length > 0 && (
+              <div className="flex justify-between text-[9px] text-slate-600 mt-1">
+                <span>{new Date(equityCurve[0].timestamp).toLocaleDateString()}</span>
+                <span>${equityCurve[0].equity.toFixed(0)} → ${equityCurve[equityCurve.length - 1].equity.toFixed(0)}</span>
+                <span>{new Date(equityCurve[equityCurve.length - 1].timestamp).toLocaleDateString()}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Trade list */}
+      {trades && trades.length > 0 && (
+        <div>
+          <div className="text-[10px] text-slate-600 mb-1">Trades ({trades.length})</div>
+          <div className="max-h-48 overflow-y-auto rounded-lg border border-white/[0.04]">
+            <table className="w-full text-[11px]">
+              <thead className="bg-[#111827] sticky top-0">
+                <tr className="text-slate-600">
+                  <th className="text-left p-1.5">#</th>
+                  <th className="text-left p-1.5">Entry</th>
+                  <th className="text-left p-1.5">Exit</th>
+                  <th className="text-right p-1.5">Entry $</th>
+                  <th className="text-right p-1.5">Exit $</th>
+                  <th className="text-right p-1.5">PnL %</th>
+                  <th className="text-right p-1.5">PnL $</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trades.map((t, i) => (
+                  <tr key={i} className="border-t border-white/[0.02] hover:bg-white/[0.02]">
+                    <td className="p-1.5 text-slate-500">{i + 1}</td>
+                    <td className="p-1.5 text-slate-400">{new Date(t.entryTimestamp).toLocaleDateString()}</td>
+                    <td className="p-1.5 text-slate-400">{new Date(t.exitTimestamp).toLocaleDateString()}</td>
+                    <td className="p-1.5 text-slate-300 text-right">${t.entryPrice < 1 ? t.entryPrice.toFixed(6) : t.entryPrice.toFixed(2)}</td>
+                    <td className="p-1.5 text-slate-300 text-right">${t.exitPrice < 1 ? t.exitPrice.toFixed(6) : t.exitPrice.toFixed(2)}</td>
+                    <td className={`p-1.5 text-right font-medium ${t.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      <span className="inline-flex items-center gap-0.5">
+                        {t.pnlPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className={`p-1.5 text-right ${t.pnlAbsolute >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {t.pnlAbsolute >= 0 ? "+" : ""}{t.pnlAbsolute.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
