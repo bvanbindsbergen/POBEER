@@ -31,7 +31,7 @@ export function calculateMetrics(trades: Trade[], equityCurve: EquityPoint[]) {
 
   const grossProfit = wins.reduce((sum, t) => sum + t.pnlAbsolute, 0);
   const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnlAbsolute, 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
 
   // Max drawdown from equity curve
   let peak = equityCurve[0]?.equity || 10000;

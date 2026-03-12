@@ -8,6 +8,11 @@ interface WalkForwardResultsProps {
   isLoading?: boolean;
 }
 
+function sf(v: number | null | undefined, d: number): string {
+  if (v == null || !isFinite(v)) return "—";
+  return v.toFixed(d);
+}
+
 export function WalkForwardResults({ result, isLoading }: WalkForwardResultsProps) {
   if (isLoading) {
     return (
@@ -51,27 +56,27 @@ export function WalkForwardResults({ result, isLoading }: WalkForwardResultsProp
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard
           label="Consistency"
-          value={`${(result.consistencyRatio * 100).toFixed(0)}%`}
+          value={`${sf((result.consistencyRatio ?? 0) * 100, 0)}%`}
           sub="profitable OOS windows"
-          color={result.consistencyRatio >= 0.6 ? "emerald" : result.consistencyRatio >= 0.4 ? "amber" : "red"}
+          color={(result.consistencyRatio ?? 0) >= 0.6 ? "emerald" : (result.consistencyRatio ?? 0) >= 0.4 ? "amber" : "red"}
         />
         <MetricCard
           label="Degradation"
-          value={`${(result.degradationRatio * 100).toFixed(0)}%`}
+          value={`${sf((result.degradationRatio ?? 0) * 100, 0)}%`}
           sub="OOS / IS Sharpe"
-          color={result.degradationRatio >= 0.7 ? "emerald" : result.degradationRatio >= 0.4 ? "amber" : "red"}
+          color={(result.degradationRatio ?? 0) >= 0.7 ? "emerald" : (result.degradationRatio ?? 0) >= 0.4 ? "amber" : "red"}
         />
         <MetricCard
           label="Avg OOS Sharpe"
-          value={result.oosSharpe.toFixed(2)}
+          value={sf(result.oosSharpe, 2)}
           sub="out-of-sample"
-          color={result.oosSharpe >= 1 ? "emerald" : result.oosSharpe >= 0 ? "amber" : "red"}
+          color={(result.oosSharpe ?? 0) >= 1 ? "emerald" : (result.oosSharpe ?? 0) >= 0 ? "amber" : "red"}
         />
         <MetricCard
           label="Avg OOS P&L"
-          value={`${result.oosAveragePnl >= 0 ? "+" : ""}${result.oosAveragePnl.toFixed(2)}%`}
+          value={`${(result.oosAveragePnl ?? 0) >= 0 ? "+" : ""}${sf(result.oosAveragePnl, 2)}%`}
           sub="out-of-sample"
-          color={result.oosAveragePnl >= 0 ? "emerald" : "red"}
+          color={(result.oosAveragePnl ?? 0) >= 0 ? "emerald" : "red"}
         />
       </div>
 
@@ -100,17 +105,17 @@ export function WalkForwardResults({ result, isLoading }: WalkForwardResultsProp
                   }`}
                 >
                   <td className="py-2 pr-3 text-slate-300 font-medium">#{w.windowIndex + 1}</td>
-                  <td className={`text-right py-2 px-3 ${w.inSampleResult.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {w.inSampleResult.totalPnl >= 0 ? "+" : ""}{w.inSampleResult.totalPnl.toFixed(2)}%
+                  <td className={`text-right py-2 px-3 ${(w.inSampleResult.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {(w.inSampleResult.totalPnl ?? 0) >= 0 ? "+" : ""}{sf(w.inSampleResult.totalPnl, 2)}%
                   </td>
                   <td className={`text-right py-2 px-3 font-medium ${oosPositive ? "text-emerald-400" : "text-red-400"}`}>
-                    {w.outOfSampleResult.totalPnl >= 0 ? "+" : ""}{w.outOfSampleResult.totalPnl.toFixed(2)}%
+                    {(w.outOfSampleResult.totalPnl ?? 0) >= 0 ? "+" : ""}{sf(w.outOfSampleResult.totalPnl, 2)}%
                   </td>
                   <td className="text-right py-2 px-3 text-slate-400">
-                    {w.inSampleResult.sharpeRatio.toFixed(2)}
+                    {sf(w.inSampleResult.sharpeRatio, 2)}
                   </td>
                   <td className="text-right py-2 px-3 text-slate-400">
-                    {w.outOfSampleResult.sharpeRatio.toFixed(2)}
+                    {sf(w.outOfSampleResult.sharpeRatio, 2)}
                   </td>
                   <td className="text-right py-2 px-3 text-slate-400">
                     {w.inSampleResult.totalTrades}

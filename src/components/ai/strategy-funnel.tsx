@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
+import { PriceChart } from "./charts/price-chart";
 
 interface FunnelSignal {
   symbol: string;
@@ -60,6 +61,12 @@ interface FunnelResult {
 }
 
 type SortField = "totalPnl" | "winRate" | "sharpeRatio" | "maxDrawdown" | "profitFactor" | "totalTrades";
+
+/** Safely call toFixed on a value that might be null/undefined after JSON serialization (Infinity/NaN → null) */
+function safeFixed(v: number | null | undefined, digits: number): string {
+  if (v == null || !isFinite(v)) return "—";
+  return v.toFixed(digits);
+}
 
 const SL_PRESETS = {
   Conservative: [2, 3, 5],
@@ -240,7 +247,7 @@ export function StrategyFunnel({
           symbol: result.strategy.symbol,
           timeframe,
           strategyConfig: JSON.stringify(result.strategy.strategyConfig),
-          notes: `Funnel result: PnL ${result.metrics.totalPnl.toFixed(1)}%, WR ${result.metrics.winRate.toFixed(0)}%, Sharpe ${result.metrics.sharpeRatio.toFixed(2)}`,
+          notes: `Funnel result: PnL ${safeFixed(result.metrics.totalPnl, 1)}%, WR ${safeFixed(result.metrics.winRate, 0)}%, Sharpe ${safeFixed(result.metrics.sharpeRatio, 2)}`,
         }),
       });
       if (!res.ok) throw new Error("Save failed");
@@ -606,7 +613,7 @@ export function StrategyFunnel({
 
               {aiCost && (
                 <div className="text-[10px] text-slate-500">
-                  Last run: {generated.length} strategies | {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
+                  Last run: {generated.length} strategies | {aiCost.inputTokens + aiCost.outputTokens} tokens (${safeFixed(aiCost.estimatedCost, 4)})
                 </div>
               )}
             </div>
@@ -824,7 +831,7 @@ export function StrategyFunnel({
               <div className="px-3 py-1.5 rounded-lg bg-amber-500/10">
                 <span className="text-slate-500">Top: </span>
                 <span className="text-amber-400 font-medium">
-                  +{sortedResults[0].metrics.totalPnl.toFixed(1)}%
+                  +{safeFixed(sortedResults[0].metrics.totalPnl, 1)}%
                 </span>
               </div>
             )}
@@ -878,13 +885,13 @@ export function StrategyFunnel({
                             </span>
                           </td>
                           <td className="p-2 text-slate-400">{r.strategy.symbol.replace("/USDT", "")}</td>
-                          <td className={`p-2 font-medium ${r.metrics.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                            {r.metrics.totalPnl >= 0 ? "+" : ""}{r.metrics.totalPnl.toFixed(1)}%
+                          <td className={`p-2 font-medium ${(r.metrics.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {(r.metrics.totalPnl ?? 0) >= 0 ? "+" : ""}{safeFixed(r.metrics.totalPnl, 1)}%
                           </td>
-                          <td className="p-2 text-slate-300">{r.metrics.winRate.toFixed(0)}%</td>
-                          <td className="p-2 text-slate-300">{r.metrics.sharpeRatio.toFixed(2)}</td>
-                          <td className="p-2 text-red-400">{r.metrics.maxDrawdown.toFixed(1)}%</td>
-                          <td className="p-2 text-slate-300">{r.metrics.profitFactor.toFixed(2)}</td>
+                          <td className="p-2 text-slate-300">{safeFixed(r.metrics.winRate, 0)}%</td>
+                          <td className="p-2 text-slate-300">{safeFixed(r.metrics.sharpeRatio, 2)}</td>
+                          <td className="p-2 text-red-400">{safeFixed(r.metrics.maxDrawdown, 1)}%</td>
+                          <td className="p-2 text-slate-300">{safeFixed(r.metrics.profitFactor, 2)}</td>
                           <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
                           <td className="p-2">
                             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
@@ -921,7 +928,7 @@ export function StrategyFunnel({
                         {isExpanded && (
                           <tr className="border-t border-white/[0.02]">
                             <td colSpan={9} className="p-0">
-                              <StrategyDetail result={r} />
+                              <StrategyDetail result={r} timeframe={timeframe} daysBack={daysBack} />
                             </td>
                           </tr>
                         )}
@@ -968,9 +975,22 @@ function SortHeader({
   );
 }
 
-function StrategyDetail({ result }: { result: FunnelResult }) {
+function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult; timeframe: string; daysBack: number }) {
   const { strategy, trades, equityCurve, metrics } = result;
   const config = strategy.strategyConfig;
+  const [candles, setCandles] = useState<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }[] | null>(null);
+
+  // Fetch candles for price chart
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/ai/market/candles?symbol=${encodeURIComponent(strategy.symbol)}&timeframe=${timeframe}&days=${daysBack}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!cancelled && data?.candles) setCandles(data.candles);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [strategy.symbol, timeframe, daysBack]);
 
   // Equity curve SVG with Y-axis labels
   const chartData = useMemo(() => {
@@ -1018,13 +1038,21 @@ function StrategyDetail({ result }: { result: FunnelResult }) {
     <div className="bg-[#0a0f1a] p-4 space-y-4">
       {/* Metric cards row */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-        <MetricCard label="Total Return" value={`${metrics.totalPnl >= 0 ? "+" : ""}${metrics.totalPnl.toFixed(2)}%`} color={color} />
-        <MetricCard label="Win Rate" value={`${(metrics.winRate * 100).toFixed(1)}%`} color={metrics.winRate >= 0.5 ? "emerald" : "amber"} />
-        <MetricCard label="Max Drawdown" value={`${(metrics.maxDrawdown * 100).toFixed(1)}%`} color="red" />
-        <MetricCard label="Sharpe Ratio" value={metrics.sharpeRatio.toFixed(2)} color={metrics.sharpeRatio >= 1 ? "emerald" : "amber"} />
-        <MetricCard label="Profit Factor" value={metrics.profitFactor.toFixed(2)} color={metrics.profitFactor >= 1.5 ? "emerald" : "amber"} />
+        <MetricCard label="Total Return" value={`${(metrics.totalPnl ?? 0) >= 0 ? "+" : ""}${safeFixed(metrics.totalPnl, 2)}%`} color={color} />
+        <MetricCard label="Win Rate" value={`${safeFixed((metrics.winRate ?? 0) * 100, 1)}%`} color={(metrics.winRate ?? 0) >= 0.5 ? "emerald" : "amber"} />
+        <MetricCard label="Max Drawdown" value={`${safeFixed((metrics.maxDrawdown ?? 0) * 100, 1)}%`} color="red" />
+        <MetricCard label="Sharpe Ratio" value={safeFixed(metrics.sharpeRatio, 2)} color={(metrics.sharpeRatio ?? 0) >= 1 ? "emerald" : "amber"} />
+        <MetricCard label="Profit Factor" value={safeFixed(metrics.profitFactor, 2)} color={(metrics.profitFactor ?? 0) >= 1.5 ? "emerald" : "amber"} />
         <MetricCard label="Total Trades" value={String(metrics.totalTrades)} color="slate" />
       </div>
+
+      {/* Price chart with trade markers */}
+      {candles && candles.length > 0 && (
+        <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3">
+          <div className="text-[10px] text-slate-600 mb-2 font-medium uppercase tracking-wider">Price Chart with Trade Markers</div>
+          <PriceChart candles={candles} trades={trades?.map((t) => ({ ...t, entryIndex: 0, exitIndex: 0, side: "long" as const }))} height={300} />
+        </div>
+      )}
 
       {/* Strategy config */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-lg bg-[#111827] border border-white/[0.04] p-3">
@@ -1063,9 +1091,9 @@ function StrategyDetail({ result }: { result: FunnelResult }) {
           {tradeStats && (
             <div className="space-y-0.5 text-[11px]">
               <div><span className="text-emerald-400">{tradeStats.wins}W</span> / <span className="text-red-400">{tradeStats.losses}L</span></div>
-              <div className="text-slate-400">Best: <span className="text-emerald-400">+{tradeStats.bestTrade.pnlPercent.toFixed(2)}%</span></div>
-              <div className="text-slate-400">Worst: <span className="text-red-400">{tradeStats.worstTrade.pnlPercent.toFixed(2)}%</span></div>
-              <div className="text-slate-400">Avg W/L: <span className="text-emerald-400">+{tradeStats.avgWin.toFixed(2)}%</span> / <span className="text-red-400">{tradeStats.avgLoss.toFixed(2)}%</span></div>
+              <div className="text-slate-400">Best: <span className="text-emerald-400">+{safeFixed(tradeStats.bestTrade.pnlPercent, 2)}%</span></div>
+              <div className="text-slate-400">Worst: <span className="text-red-400">{safeFixed(tradeStats.worstTrade.pnlPercent, 2)}%</span></div>
+              <div className="text-slate-400">Avg W/L: <span className="text-emerald-400">+{safeFixed(tradeStats.avgWin, 2)}%</span> / <span className="text-red-400">{safeFixed(tradeStats.avgLoss, 2)}%</span></div>
             </div>
           )}
         </div>
@@ -1099,7 +1127,7 @@ function StrategyDetail({ result }: { result: FunnelResult }) {
           </svg>
           <div className="flex justify-between text-[9px] text-slate-600 mt-1 px-1">
             <span>{new Date(equityCurve[0].timestamp).toLocaleDateString()}</span>
-            <span>${equityCurve[0].equity.toFixed(0)} → ${equityCurve[equityCurve.length - 1].equity.toFixed(0)}</span>
+            <span>${safeFixed(equityCurve[0].equity, 0)} → ${safeFixed(equityCurve[equityCurve.length - 1].equity, 0)}</span>
             <span>{new Date(equityCurve[equityCurve.length - 1].timestamp).toLocaleDateString()}</span>
           </div>
         </div>
@@ -1136,19 +1164,19 @@ function StrategyDetail({ result }: { result: FunnelResult }) {
                       <td className="p-2 text-slate-400">{new Date(t.exitTimestamp).toLocaleDateString()}</td>
                       <td className="p-2 text-slate-500">{durationStr}</td>
                       <td className="p-2 text-slate-300 text-right font-mono">
-                        ${t.entryPrice < 1 ? t.entryPrice.toFixed(6) : t.entryPrice.toFixed(2)}
+                        ${(t.entryPrice ?? 0) < 1 ? safeFixed(t.entryPrice, 6) : safeFixed(t.entryPrice, 2)}
                       </td>
                       <td className="p-2 text-slate-300 text-right font-mono">
-                        ${t.exitPrice < 1 ? t.exitPrice.toFixed(6) : t.exitPrice.toFixed(2)}
+                        ${(t.exitPrice ?? 0) < 1 ? safeFixed(t.exitPrice, 6) : safeFixed(t.exitPrice, 2)}
                       </td>
-                      <td className={`p-2 text-right font-medium ${t.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      <td className={`p-2 text-right font-medium ${(t.pnlPercent ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         <span className="inline-flex items-center gap-0.5">
-                          {t.pnlPercent >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {t.pnlPercent >= 0 ? "+" : ""}{t.pnlPercent.toFixed(2)}%
+                          {(t.pnlPercent ?? 0) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {(t.pnlPercent ?? 0) >= 0 ? "+" : ""}{safeFixed(t.pnlPercent, 2)}%
                         </span>
                       </td>
-                      <td className={`p-2 text-right font-mono ${t.pnlAbsolute >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {t.pnlAbsolute >= 0 ? "+" : ""}{t.pnlAbsolute.toFixed(2)}
+                      <td className={`p-2 text-right font-mono ${(t.pnlAbsolute ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {(t.pnlAbsolute ?? 0) >= 0 ? "+" : ""}{safeFixed(t.pnlAbsolute, 2)}
                       </td>
                     </tr>
                   );

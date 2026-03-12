@@ -55,14 +55,14 @@ export function PriceChart({ candles, trades, height = 400 }: PriceChartProps) {
           position: "belowBar" as const,
           color: "#10b981",
           shape: "arrowUp" as const,
-          text: `Entry $${t.entryPrice.toFixed(2)}`,
+          text: `Entry $${t.entryPrice?.toFixed(2) ?? "—"}`,
         },
         {
           time: (t.exitTimestamp / 1000) as unknown as import("lightweight-charts").UTCTimestamp,
           position: "aboveBar" as const,
           color: t.pnlAbsolute >= 0 ? "#10b981" : "#ef4444",
           shape: "arrowDown" as const,
-          text: `Exit $${t.exitPrice.toFixed(2)}`,
+          text: `Exit $${t.exitPrice?.toFixed(2) ?? "—"}`,
         },
       ]);
 

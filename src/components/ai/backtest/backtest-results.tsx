@@ -7,6 +7,11 @@ import type { Trade, EquityPoint, WalkForwardResult } from "@/lib/ai/backtest/ty
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Activity, BarChart3, Target, Hash, Zap, Shield, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 
+function sf(v: number | null | undefined, d: number): string {
+  if (v == null || !isFinite(v)) return "—";
+  return v.toFixed(d);
+}
+
 interface BacktestResultsProps {
   result: {
     id?: string;
@@ -47,11 +52,11 @@ export function BacktestResults({ result, candles, onActivate, walkForwardResult
     ? JSON.parse(result.equityCurve || "[]")
     : result.equityCurve || [];
 
-  const pnl = Number(result.totalPnl);
-  const winRate = Number(result.winRate);
-  const drawdown = Number(result.maxDrawdown);
-  const sharpe = Number(result.sharpeRatio);
-  const pf = Number(result.profitFactor);
+  const pnl = Number(result.totalPnl) || 0;
+  const winRate = Number(result.winRate) || 0;
+  const drawdown = Number(result.maxDrawdown) || 0;
+  const sharpe = Number(result.sharpeRatio) || 0;
+  const pf = Number(result.profitFactor) || 0;
   const isPositive = pnl >= 0;
 
   const metrics = [
@@ -186,26 +191,26 @@ export function BacktestResults({ result, candles, onActivate, walkForwardResult
           <div className="grid grid-cols-4 gap-3">
             <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
               <p className="text-[10px] text-slate-500">Consistency</p>
-              <p className={`text-sm font-bold ${walkForwardResult.consistencyRatio >= 0.6 ? "text-emerald-400" : walkForwardResult.consistencyRatio >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
-                {(walkForwardResult.consistencyRatio * 100).toFixed(0)}%
+              <p className={`text-sm font-bold ${(walkForwardResult.consistencyRatio ?? 0) >= 0.6 ? "text-emerald-400" : (walkForwardResult.consistencyRatio ?? 0) >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
+                {sf((walkForwardResult.consistencyRatio ?? 0) * 100, 0)}%
               </p>
             </div>
             <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
               <p className="text-[10px] text-slate-500">Degradation</p>
-              <p className={`text-sm font-bold ${walkForwardResult.degradationRatio >= 0.7 ? "text-emerald-400" : walkForwardResult.degradationRatio >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
-                {(walkForwardResult.degradationRatio * 100).toFixed(0)}%
+              <p className={`text-sm font-bold ${(walkForwardResult.degradationRatio ?? 0) >= 0.7 ? "text-emerald-400" : (walkForwardResult.degradationRatio ?? 0) >= 0.4 ? "text-amber-400" : "text-red-400"}`}>
+                {sf((walkForwardResult.degradationRatio ?? 0) * 100, 0)}%
               </p>
             </div>
             <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
               <p className="text-[10px] text-slate-500">Avg OOS Sharpe</p>
-              <p className={`text-sm font-bold ${walkForwardResult.oosSharpe >= 1 ? "text-emerald-400" : walkForwardResult.oosSharpe >= 0 ? "text-amber-400" : "text-red-400"}`}>
-                {walkForwardResult.oosSharpe.toFixed(2)}
+              <p className={`text-sm font-bold ${(walkForwardResult.oosSharpe ?? 0) >= 1 ? "text-emerald-400" : (walkForwardResult.oosSharpe ?? 0) >= 0 ? "text-amber-400" : "text-red-400"}`}>
+                {sf(walkForwardResult.oosSharpe, 2)}
               </p>
             </div>
             <div className="rounded bg-white/[0.02] border border-white/[0.04] p-2">
               <p className="text-[10px] text-slate-500">Avg OOS P&L</p>
-              <p className={`text-sm font-bold ${walkForwardResult.oosAveragePnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {walkForwardResult.oosAveragePnl >= 0 ? "+" : ""}{walkForwardResult.oosAveragePnl.toFixed(2)}%
+              <p className={`text-sm font-bold ${(walkForwardResult.oosAveragePnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {(walkForwardResult.oosAveragePnl ?? 0) >= 0 ? "+" : ""}{sf(walkForwardResult.oosAveragePnl, 2)}%
               </p>
             </div>
           </div>
@@ -242,14 +247,14 @@ export function BacktestResults({ result, candles, onActivate, walkForwardResult
                         className={`border-b border-white/[0.03] ${oosPositive ? "bg-emerald-500/[0.03]" : "bg-red-500/[0.03]"}`}
                       >
                         <td className="py-2 pr-3 text-slate-300 font-medium">#{w.windowIndex + 1}</td>
-                        <td className={`text-right py-2 px-3 ${w.inSampleResult.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                          {w.inSampleResult.totalPnl >= 0 ? "+" : ""}{w.inSampleResult.totalPnl.toFixed(2)}%
+                        <td className={`text-right py-2 px-3 ${(w.inSampleResult.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {(w.inSampleResult.totalPnl ?? 0) >= 0 ? "+" : ""}{sf(w.inSampleResult.totalPnl, 2)}%
                         </td>
                         <td className={`text-right py-2 px-3 font-medium ${oosPositive ? "text-emerald-400" : "text-red-400"}`}>
-                          {w.outOfSampleResult.totalPnl >= 0 ? "+" : ""}{w.outOfSampleResult.totalPnl.toFixed(2)}%
+                          {(w.outOfSampleResult.totalPnl ?? 0) >= 0 ? "+" : ""}{sf(w.outOfSampleResult.totalPnl, 2)}%
                         </td>
-                        <td className="text-right py-2 px-3 text-slate-400">{w.inSampleResult.sharpeRatio.toFixed(2)}</td>
-                        <td className="text-right py-2 px-3 text-slate-400">{w.outOfSampleResult.sharpeRatio.toFixed(2)}</td>
+                        <td className="text-right py-2 px-3 text-slate-400">{sf(w.inSampleResult.sharpeRatio, 2)}</td>
+                        <td className="text-right py-2 px-3 text-slate-400">{sf(w.outOfSampleResult.sharpeRatio, 2)}</td>
                         <td className="text-right py-2 px-3 text-slate-400">{w.inSampleResult.totalTrades}</td>
                         <td className="text-right py-2 pl-3 text-slate-400">{w.outOfSampleResult.totalTrades}</td>
                       </tr>
