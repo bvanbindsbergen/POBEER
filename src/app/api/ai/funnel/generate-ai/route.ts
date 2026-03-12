@@ -108,34 +108,41 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: `Generate exactly ${aiBaseCount} trading strategies based on current market data. Each strategy must use specific technical indicator conditions that can be backtested.
+          content: `You are designing trading strategies that will be backtested over the last 90 days on ${timeframe} candles. The goal is to find strategies that return AT LEAST 5% total profit over this period. Think carefully about what actually works in recent market conditions.
+
+Generate exactly ${aiBaseCount} HIGH-QUALITY trading strategies. Each must be specific and backtestable.
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}
 
-CURRENT MARKET DATA:
-Timeframe: ${timeframe}
-Technicals per coin:
+CURRENT MARKET DATA (last 14 days, ${timeframe} timeframe):
 ${JSON.stringify(technicals, null, 2)}
 ${overviewStr}
 
 Available symbols: ${symbolsToScan.join(", ")}
 
-Available indicators for conditions: rsi, macd, bollinger, ema, sma, stochastic, atr
+STRATEGY DESIGN PRINCIPLES:
+- Use MULTIPLE entry conditions (2-3) for higher-quality signals — single-indicator strategies rarely work
+- Combine trend + momentum indicators (e.g., EMA cross + RSI confirmation)
+- Use "crosses_above"/"crosses_below" for entries — they trigger on momentum shifts, not static levels
+- Set TP to 2-3x the SL for positive expectancy (e.g., SL 3% → TP 6-9%)
+- Prefer coins showing clear trends or oversold bounces in the data above
+- Avoid entries that rarely trigger (e.g., RSI < 15 is too extreme)
+
+Available indicators: rsi, macd, bollinger, ema, sma, stochastic, atr
 Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
-For indicator-vs-indicator comparisons, value can be: {"indicator": "ema", "params": {"period": 21}}
+For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":21}}
 
-Respond ONLY with a JSON array of exactly ${aiBaseCount} objects. No markdown, no explanation, no whitespace padding. Keep JSON compact.
+Respond ONLY with a JSON array. No markdown. Compact JSON.
 Each object:
-{"name":"SOL RSI Bounce","symbol":"SOL/USDT","sourceSignal":"RSI<30","tags":["rsi","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"rsi","operator":"<","value":30}],"exitConditions":[{"indicator":"rsi","operator":">","value":70}],"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}}}
+{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}],"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}}}
 
-RULES:
-- Vary across different coins and indicator combinations
-- Mix risk levels (tight SL 2-3% to wide 8-12%)
-- Every strategy MUST have entryConditions and exitConditions (non-empty arrays)
-- takeProfitPercent > stopLossPercent always
-- Keep names short (under 30 chars)
-- Output compact JSON (no pretty-printing)
+HARD RULES:
+- 2-3 entry conditions per strategy (combine indicators)
+- 1-2 exit conditions
+- takeProfitPercent must be >= 2x stopLossPercent
+- Vary across coins AND indicator combinations
+- Names under 30 chars, compact JSON
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         },
       ],

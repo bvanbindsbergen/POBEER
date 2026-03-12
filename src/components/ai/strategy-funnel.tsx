@@ -104,14 +104,13 @@ export function StrategyFunnel({
   const [useScanner, setUseScanner] = useState(!initialSignals?.length);
 
   // AI mode config
-  const [aiTargetTotal, setAiTargetTotal] = useState(200);
+  const [aiBaseCount, setAiBaseCount] = useState(20);
+  const [aiExpand, setAiExpand] = useState(false);
+  const [aiTargetTotal, setAiTargetTotal] = useState(1000);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
-  const [aiBaseGenerated, setAiBaseGenerated] = useState<number | null>(null);
 
-  const positionSizePercent = 10; // fixed default
-  // AI asks Claude for up to 20 base ideas, then expands with SL/TP variations
-  const aiBaseCount = Math.min(20, aiTargetTotal);
+  const positionSizePercent = 10;
 
   // Stage 2 state
   const [generated, setGenerated] = useState<GeneratedStrategy[]>([]);
@@ -178,10 +177,12 @@ export function StrategyFunnel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          count: aiTargetTotal,
+          count: aiBaseCount,
+          targetTotal: aiExpand ? aiTargetTotal : aiBaseCount,
           prompt: aiPrompt,
           timeframe,
           positionSizePercent,
+          ...(aiExpand ? { slRange: SL_PRESETS[slPreset], tpRange: TP_PRESETS[tpPreset] } : {}),
         }),
       });
       if (!res.ok) {
@@ -194,7 +195,6 @@ export function StrategyFunnel({
       setGenerated(data.strategies);
       setSelected(new Set(data.strategies.map((s: GeneratedStrategy) => s.id)));
       setAiCost(data.tokenUsage || null);
-      setAiBaseGenerated(data.aiBaseCount || null);
       setStage(2);
     },
   });
@@ -488,29 +488,89 @@ export function StrategyFunnel({
           {/* AI mode options */}
           {mode === "ai" && (
             <div className="space-y-3">
-              <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 px-3 py-2 text-[11px] text-slate-400">
-                Claude analyzes live market data and generates <span className="text-violet-400 font-medium">{aiTargetTotal} unique strategies</span> with
-                optimized entry/exit conditions and SL/TP per strategy. Cost: ~$0.03-0.05 per run.
-              </div>
-
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">
-                  Number of strategies: {aiTargetTotal}
+                  AI base ideas: {aiBaseCount}
+                  <span className="text-slate-600 ml-1">(unique strategies Claude creates)</span>
                 </label>
                 <input
                   type="range"
                   min={5}
                   max={30}
                   step={1}
-                  value={aiTargetTotal}
-                  onChange={(e) => setAiTargetTotal(Number(e.target.value))}
+                  value={aiBaseCount}
+                  onChange={(e) => setAiBaseCount(Number(e.target.value))}
                   className="w-full accent-violet-500"
                 />
                 <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
                   <span>5</span>
+                  <span>~${(aiBaseCount * 0.003).toFixed(3)}</span>
                   <span>30</span>
                 </div>
               </div>
+
+              {/* Expand toggle */}
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aiExpand}
+                  onChange={(e) => setAiExpand(e.target.checked)}
+                  className="rounded border-slate-600 accent-violet-500"
+                />
+                Expand with SL/TP variations to generate more strategies
+              </label>
+
+              {aiExpand && (
+                <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 p-3 space-y-3">
+                  <div className="text-[11px] text-slate-400">
+                    Each AI idea gets crossed with SL/TP ranges → up to <span className="text-violet-400 font-medium">{aiTargetTotal}</span> total strategies.
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">
+                      Target total: {aiTargetTotal}
+                    </label>
+                    <input
+                      type="range"
+                      min={50}
+                      max={5000}
+                      step={50}
+                      value={aiTargetTotal}
+                      onChange={(e) => setAiTargetTotal(Number(e.target.value))}
+                      className="w-full accent-violet-500"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
+                      <span>50</span>
+                      <span>5000</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-slate-500 block mb-1">SL Range</label>
+                      <select
+                        value={slPreset}
+                        onChange={(e) => setSlPreset(e.target.value as keyof typeof SL_PRESETS)}
+                        className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                      >
+                        {Object.entries(SL_PRESETS).map(([name, vals]) => (
+                          <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500 block mb-1">TP Range</label>
+                      <select
+                        value={tpPreset}
+                        onChange={(e) => setTpPreset(e.target.value as keyof typeof TP_PRESETS)}
+                        className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                      >
+                        {Object.entries(TP_PRESETS).map(([name, vals]) => (
+                          <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">
@@ -558,7 +618,7 @@ export function StrategyFunnel({
               ) : (
                 <Brain className="w-4 h-4 mr-2" />
               )}
-              Generate {aiTargetTotal} AI Strategies
+              Generate {aiExpand ? aiTargetTotal : aiBaseCount} AI Strategies
             </Button>
           )}
 
