@@ -25,11 +25,13 @@ import {
   Radar,
   Flame,
   Grid3x3,
+  Filter,
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 import type { WalkForwardResult } from "@/lib/ai/backtest/types";
 import { GridDashboard } from "@/components/grid/grid-dashboard";
 import { GridStrategyForm } from "@/components/grid/grid-strategy-form";
+import { StrategyFunnel } from "@/components/ai/strategy-funnel";
 
 class AIErrorBoundary extends Component<
   { children: ReactNode; fallback?: ReactNode },
@@ -92,6 +94,9 @@ export default function AIPage() {
   } | null>(null);
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
   const [walkForwardLoading, setWalkForwardLoading] = useState(false);
+  const [funnelSignals, setFunnelSignals] = useState<
+    { symbol: string; signals: string[]; currentPrice: number }[] | undefined
+  >();
   const queryClient = useQueryClient();
 
   // Check if user is leader
@@ -243,6 +248,15 @@ export default function AIPage() {
     []
   );
 
+  // Handle scanner → funnel
+  const handleScannerFunnel = useCallback(
+    (signals: { symbol: string; signals: string[]; currentPrice: number }[]) => {
+      setFunnelSignals(signals);
+      setActiveTab("funnel");
+    },
+    []
+  );
+
   // Handle strategy actions from chat
   const handleStrategyAction = useCallback(
     (action: string, data: unknown) => {
@@ -330,6 +344,13 @@ export default function AIPage() {
           >
             <FlaskConical className="w-4 h-4 mr-1.5" />
             Backtests
+          </TabsTrigger>
+          <TabsTrigger
+            value="funnel"
+            className="data-[state=active]:bg-emerald-500/10 data-[state=active]:text-emerald-400 text-sm"
+          >
+            <Filter className="w-4 h-4 mr-1.5" />
+            Funnel
           </TabsTrigger>
           <TabsTrigger
             value="live"
@@ -520,6 +541,14 @@ export default function AIPage() {
           />
         </TabsContent>
 
+        {/* Funnel Tab */}
+        <TabsContent value="funnel" className="mt-0">
+          <StrategyFunnel
+            initialSignals={funnelSignals}
+            onActivate={(source) => setActivateSource(source)}
+          />
+        </TabsContent>
+
         {/* Live Tab */}
         <TabsContent value="live" className="mt-0">
           <OperationalDashboard />
@@ -546,7 +575,7 @@ export default function AIPage() {
               <h3 className="text-sm font-semibold text-slate-200">Market Scanner</h3>
               <span className="text-[10px] text-slate-500">Technical analysis across top 20 coins</span>
             </div>
-            <MarketScanner />
+            <MarketScanner onFunnel={handleScannerFunnel} />
           </div>
         </TabsContent>
 

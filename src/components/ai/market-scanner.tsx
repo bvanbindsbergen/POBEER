@@ -11,6 +11,7 @@ import {
   Search,
   TrendingUp,
   BarChart3,
+  Sparkles,
 } from "lucide-react";
 
 interface MarketSignal {
@@ -22,7 +23,11 @@ interface MarketSignal {
   timeframe: string;
 }
 
-export function MarketScanner() {
+export function MarketScanner({
+  onFunnel,
+}: {
+  onFunnel?: (signals: { symbol: string; signals: string[]; currentPrice: number }[]) => void;
+} = {}) {
   const [timeframe, setTimeframe] = useState("1h");
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -91,7 +96,26 @@ export function MarketScanner() {
             {data.cached && " (cached)"}
           </span>
         )}
-        <span className="text-[10px] text-slate-600 ml-auto">
+        {onFunnel && signals.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              onFunnel(
+                signals.map((s) => ({
+                  symbol: s.symbol,
+                  signals: s.signals,
+                  currentPrice: s.currentPrice,
+                }))
+              )
+            }
+            className="h-7 text-xs border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 ml-auto"
+          >
+            <Sparkles className="w-3 h-3 mr-1" />
+            Funnel All Signals
+          </Button>
+        )}
+        <span className={`text-[10px] text-slate-600 ${onFunnel && signals.length > 0 ? "" : "ml-auto"}`}>
           Scanning 20 top coins
         </span>
       </div>
@@ -124,6 +148,23 @@ export function MarketScanner() {
                   <Badge variant="outline" className="text-[10px]">{s.timeframe}</Badge>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {onFunnel && (
+                    <button
+                      onClick={() =>
+                        onFunnel([
+                          {
+                            symbol: s.symbol,
+                            signals: s.signals,
+                            currentPrice: s.currentPrice,
+                          },
+                        ])
+                      }
+                      className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Funnel
+                    </button>
+                  )}
                   <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="text-xs font-medium text-cyan-400">{s.score} signal{s.score > 1 ? "s" : ""}</span>
                 </div>
