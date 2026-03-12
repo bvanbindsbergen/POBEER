@@ -15,6 +15,8 @@ import {
   ArrowUpDown,
   CheckSquare,
   Square,
+  Brain,
+  Cpu,
 } from "lucide-react";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 
@@ -69,14 +71,24 @@ export function StrategyFunnel({
   // Stage tracking
   const [stage, setStage] = useState<1 | 2 | 3>(1);
 
-  // Stage 1 config
+  // Mode: algorithmic (free) or ai (Claude-powered)
+  const [mode, setMode] = useState<"algo" | "ai">("algo");
+
+  // Stage 1 config (shared)
   const [timeframe, setTimeframe] = useState("1h");
+  const [minProfitPercent, setMinProfitPercent] = useState(5);
+  const [positionSizePercent, setPositionSizePercent] = useState(10);
+
+  // Algorithmic mode config
   const [maxStrategies, setMaxStrategies] = useState(1000);
   const [slPreset, setSlPreset] = useState<keyof typeof SL_PRESETS>("Moderate");
   const [tpPreset, setTpPreset] = useState<keyof typeof TP_PRESETS>("Moderate");
-  const [minProfitPercent, setMinProfitPercent] = useState(5);
-  const [positionSizePercent, setPositionSizePercent] = useState(10);
   const [useScanner, setUseScanner] = useState(!initialSignals?.length);
+
+  // AI mode config
+  const [aiCount, setAiCount] = useState(10);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
 
   // Stage 2 state
   const [generated, setGenerated] = useState<GeneratedStrategy[]>([]);
@@ -131,6 +143,33 @@ export function StrategyFunnel({
     onSuccess: (data) => {
       setGenerated(data.strategies);
       setSelected(new Set(data.strategies.map((s: GeneratedStrategy) => s.id)));
+      setStage(2);
+    },
+  });
+
+  // AI generate mutation
+  const aiGenerateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/ai/funnel/generate-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          count: aiCount,
+          prompt: aiPrompt,
+          timeframe,
+          positionSizePercent,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "AI generation failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setGenerated(data.strategies);
+      setSelected(new Set(data.strategies.map((s: GeneratedStrategy) => s.id)));
+      setAiCost(data.tokenUsage || null);
       setStage(2);
     },
   });
@@ -300,23 +339,35 @@ export function StrategyFunnel({
             Configure Strategy Generation
           </h3>
 
-          {initialSignals?.length ? (
-            <div className="text-xs text-slate-400">
-              Using {initialSignals.length} coin{initialSignals.length > 1 ? "s" : ""} from scanner:{" "}
-              {initialSignals.map((s) => s.symbol.replace("/USDT", "")).join(", ")}
-            </div>
-          ) : (
-            <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useScanner}
-                onChange={(e) => setUseScanner(e.target.checked)}
-                className="rounded border-slate-600"
-              />
-              Use Market Scanner signals (auto-fetch)
-            </label>
-          )}
+          {/* Mode toggle */}
+          <div className="flex gap-1 p-0.5 rounded-lg bg-[#0d1117] border border-white/[0.06] w-fit">
+            <button
+              onClick={() => setMode("algo")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                mode === "algo"
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              Algorithmic
+              <span className="text-[9px] opacity-60">FREE</span>
+            </button>
+            <button
+              onClick={() => setMode("ai")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                mode === "ai"
+                  ? "bg-violet-500/15 text-violet-400"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5" />
+              AI (Claude)
+              <span className="text-[9px] opacity-60">~$0.01-0.05</span>
+            </button>
+          </div>
 
+          {/* Shared config */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <label className="text-[11px] text-slate-500 block mb-1">Timeframe</label>
@@ -327,47 +378,6 @@ export function StrategyFunnel({
               >
                 {["15m", "1h", "4h", "1d"].map((tf) => (
                   <option key={tf} value={tf}>{tf}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-500 block mb-1">
-                Max Strategies: {maxStrategies}
-              </label>
-              <input
-                type="range"
-                min={100}
-                max={5000}
-                step={100}
-                value={maxStrategies}
-                onChange={(e) => setMaxStrategies(Number(e.target.value))}
-                className="w-full accent-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-500 block mb-1">SL Range</label>
-              <select
-                value={slPreset}
-                onChange={(e) => setSlPreset(e.target.value as keyof typeof SL_PRESETS)}
-                className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
-              >
-                {Object.entries(SL_PRESETS).map(([name, vals]) => (
-                  <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-500 block mb-1">TP Range</label>
-              <select
-                value={tpPreset}
-                onChange={(e) => setTpPreset(e.target.value as keyof typeof TP_PRESETS)}
-                className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
-              >
-                {Object.entries(TP_PRESETS).map(([name, vals]) => (
-                  <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
                 ))}
               </select>
             </div>
@@ -398,22 +408,152 @@ export function StrategyFunnel({
             </div>
           </div>
 
-          <Button
-            onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            {generateMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            Generate Ideas
-          </Button>
+          {/* Algorithmic mode options */}
+          {mode === "algo" && (
+            <div className="space-y-3">
+              {initialSignals?.length ? (
+                <div className="text-xs text-slate-400">
+                  Using {initialSignals.length} coin{initialSignals.length > 1 ? "s" : ""} from scanner:{" "}
+                  {initialSignals.map((s) => s.symbol.replace("/USDT", "")).join(", ")}
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useScanner}
+                    onChange={(e) => setUseScanner(e.target.checked)}
+                    className="rounded border-slate-600"
+                  />
+                  Use Market Scanner signals (auto-fetch)
+                </label>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">
+                    Max Strategies: {maxStrategies}
+                  </label>
+                  <input
+                    type="range"
+                    min={100}
+                    max={5000}
+                    step={100}
+                    value={maxStrategies}
+                    onChange={(e) => setMaxStrategies(Number(e.target.value))}
+                    className="w-full accent-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">SL Range</label>
+                  <select
+                    value={slPreset}
+                    onChange={(e) => setSlPreset(e.target.value as keyof typeof SL_PRESETS)}
+                    className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                  >
+                    {Object.entries(SL_PRESETS).map(([name, vals]) => (
+                      <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">TP Range</label>
+                  <select
+                    value={tpPreset}
+                    onChange={(e) => setTpPreset(e.target.value as keyof typeof TP_PRESETS)}
+                    className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2 py-1.5 text-xs text-slate-300"
+                  >
+                    {Object.entries(TP_PRESETS).map(([name, vals]) => (
+                      <option key={name} value={name}>{name} [{vals.join(",")}%]</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AI mode options */}
+          {mode === "ai" && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">
+                  Number of strategies: {aiCount}
+                </label>
+                <input
+                  type="range"
+                  min={5}
+                  max={50}
+                  step={5}
+                  value={aiCount}
+                  onChange={(e) => setAiCount(Number(e.target.value))}
+                  className="w-full accent-violet-500"
+                />
+                <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
+                  <span>5</span>
+                  <span>~${(aiCount * 0.003).toFixed(3)} estimated</span>
+                  <span>50</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">
+                  Your instructions <span className="text-slate-600">(optional — guide what Claude generates)</span>
+                </label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="e.g. Focus on SOL and ETH. I prefer momentum strategies with tight stop losses. Avoid DOGE. Look for RSI divergence setups..."
+                  rows={3}
+                  className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-violet-500/30 focus:outline-none resize-none"
+                />
+              </div>
+
+              {aiCost && (
+                <div className="text-[10px] text-slate-500">
+                  Last generation: {aiCost.inputTokens + aiCost.outputTokens} tokens (${aiCost.estimatedCost.toFixed(4)})
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Generate button */}
+          {mode === "algo" ? (
+            <Button
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {generateMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Cpu className="w-4 h-4 mr-2" />
+              )}
+              Generate {maxStrategies} Ideas
+            </Button>
+          ) : (
+            <Button
+              onClick={() => aiGenerateMutation.mutate()}
+              disabled={aiGenerateMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {aiGenerateMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Brain className="w-4 h-4 mr-2" />
+              )}
+              Generate {aiCount} AI Strategies
+            </Button>
+          )}
 
           {generateMutation.isError && (
             <p className="text-xs text-red-400">
               Failed to generate strategies. {(generateMutation.error as Error)?.message}
+            </p>
+          )}
+          {aiGenerateMutation.isError && (
+            <p className="text-xs text-red-400">
+              AI generation failed. {(aiGenerateMutation.error as Error)?.message}
             </p>
           )}
         </div>
