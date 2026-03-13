@@ -606,7 +606,7 @@ export function StrategyFunnel({
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   placeholder="e.g. Focus on SOL and ETH. I prefer momentum strategies with tight stop losses. Avoid DOGE. Look for RSI divergence setups..."
-                  rows={3}
+                  rows={2}
                   className="w-full rounded bg-[#0d1117] border border-white/[0.08] px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-violet-500/30 focus:outline-none resize-none"
                 />
               </div>
@@ -703,7 +703,7 @@ export function StrategyFunnel({
           </div>
 
           {/* Strategy table */}
-          <div className="max-h-80 overflow-auto rounded-lg border border-white/[0.04]">
+          <div className="max-h-52 sm:max-h-80 overflow-auto rounded-lg border border-white/[0.04]">
             <table className="w-full text-xs min-w-[500px]">
               <thead className="bg-[#0d1117] sticky top-0">
                 <tr className="text-slate-500">

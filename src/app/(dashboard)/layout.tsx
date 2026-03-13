@@ -201,7 +201,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">{children}</div>
+        <div className="p-4 md:p-8 pb-20 md:pb-8 max-w-7xl mx-auto">{children}</div>
 
         {/* Mobile bottom nav */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 bg-[#070b12] border-t border-white/[0.06] flex justify-around px-2 py-2 z-40">
