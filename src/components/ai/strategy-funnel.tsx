@@ -263,12 +263,11 @@ export function StrategyFunnel({
     },
   });
 
-  // Bulk save
+  // Bulk save — accepts actual result objects to avoid ID lookup issues
   const bulkSaveMutation = useMutation({
-    mutationFn: async (resultIds: string[]) => {
-      const toSave = results.filter((r) => resultIds.includes(r.strategy.id) && !savedResults.has(r.strategy.id));
+    mutationFn: async (resultsToSave: FunnelResult[]) => {
       const responses = await Promise.all(
-        toSave.map((result) =>
+        resultsToSave.map((result) =>
           fetch("/api/ai/strategies", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -284,7 +283,7 @@ export function StrategyFunnel({
       );
       const savedIds: string[] = [];
       for (let i = 0; i < responses.length; i++) {
-        if (responses[i].ok) savedIds.push(toSave[i].strategy.id);
+        if (responses[i].ok) savedIds.push(resultsToSave[i].strategy.id);
       }
       return savedIds;
     },
@@ -903,7 +902,10 @@ export function StrategyFunnel({
                 </span>
                 <Button
                   size="sm"
-                  onClick={() => bulkSaveMutation.mutate([...selectedResults])}
+                  onClick={() => {
+                    const toSave = sortedResults.filter((r) => selectedResults.has(r.strategy.id) && !savedResults.has(r.strategy.id));
+                    if (toSave.length > 0) bulkSaveMutation.mutate(toSave);
+                  }}
                   disabled={bulkSaveMutation.isPending}
                   className="h-6 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
                 >

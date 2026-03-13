@@ -546,12 +546,14 @@ export default function AIPage() {
           />
         </TabsContent>
 
-        {/* Funnel Tab */}
-        <TabsContent value="funnel" className="mt-0">
-          <StrategyFunnel
-            initialSignals={funnelSignals}
-            onActivate={(source) => setActivateSource(source)}
-          />
+        {/* Funnel Tab — forceMount keeps state alive across tab switches */}
+        <TabsContent value="funnel" className="mt-0" forceMount>
+          <div className={activeTab !== "funnel" ? "hidden" : undefined}>
+            <StrategyFunnel
+              initialSignals={funnelSignals}
+              onActivate={(source) => setActivateSource(source)}
+            />
+          </div>
         </TabsContent>
 
         {/* Live Tab */}
