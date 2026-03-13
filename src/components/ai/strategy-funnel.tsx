@@ -135,6 +135,8 @@ export function StrategyFunnel({
   const [sortField, setSortField] = useState<SortField>("totalPnl");
   const [sortAsc, setSortAsc] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [savedResults, setSavedResults] = useState<Set<string>>(new Set());
+  const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
 
   // Generate mutation
   const generateMutation = useMutation({
@@ -246,12 +248,53 @@ export function StrategyFunnel({
           name: result.strategy.name,
           symbol: result.strategy.symbol,
           timeframe,
-          strategyConfig: JSON.stringify(result.strategy.strategyConfig),
-          notes: `Funnel result: PnL ${safeFixed(result.metrics.totalPnl, 1)}%, WR ${safeFixed(result.metrics.winRate, 0)}%, Sharpe ${safeFixed(result.metrics.sharpeRatio, 2)}`,
+          strategyConfig: result.strategy.strategyConfig,
+          notes: `Funnel result: PnL ${safeFixed(result.metrics.totalPnl, 1)}%, WR ${safeFixed((result.metrics.winRate ?? 0) * 100, 0)}%, Sharpe ${safeFixed(result.metrics.sharpeRatio, 2)}`,
         }),
       });
-      if (!res.ok) throw new Error("Save failed");
-      return res.json();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Save failed");
+      }
+      return { strategy: await res.json(), id: result.strategy.id };
+    },
+    onSuccess: (data) => {
+      setSavedResults((prev) => new Set(prev).add(data.id));
+    },
+  });
+
+  // Bulk save
+  const bulkSaveMutation = useMutation({
+    mutationFn: async (resultIds: string[]) => {
+      const toSave = results.filter((r) => resultIds.includes(r.strategy.id) && !savedResults.has(r.strategy.id));
+      const responses = await Promise.all(
+        toSave.map((result) =>
+          fetch("/api/ai/strategies", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: result.strategy.name,
+              symbol: result.strategy.symbol,
+              timeframe,
+              strategyConfig: result.strategy.strategyConfig,
+              notes: `Funnel result: PnL ${safeFixed(result.metrics.totalPnl, 1)}%, WR ${safeFixed((result.metrics.winRate ?? 0) * 100, 0)}%, Sharpe ${safeFixed(result.metrics.sharpeRatio, 2)}`,
+            }),
+          })
+        )
+      );
+      const savedIds: string[] = [];
+      for (let i = 0; i < responses.length; i++) {
+        if (responses[i].ok) savedIds.push(toSave[i].strategy.id);
+      }
+      return savedIds;
+    },
+    onSuccess: (savedIds) => {
+      setSavedResults((prev) => {
+        const next = new Set(prev);
+        savedIds.forEach((id) => next.add(id));
+        return next;
+      });
+      setSelectedResults(new Set());
     },
   });
 
@@ -500,13 +543,13 @@ export function StrategyFunnel({
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">
                   AI base ideas: {aiBaseCount}
-                  <span className="text-slate-600 ml-1">(unique strategies Claude creates)</span>
+                  <span className="text-slate-600 ml-1">({aiBaseCount > 30 ? `${Math.ceil(aiBaseCount / 30)} API calls` : "unique strategies Claude creates"})</span>
                 </label>
                 <input
                   type="range"
                   min={5}
-                  max={30}
-                  step={1}
+                  max={200}
+                  step={5}
                   value={aiBaseCount}
                   onChange={(e) => setAiBaseCount(Number(e.target.value))}
                   className="w-full accent-violet-500"
@@ -514,7 +557,7 @@ export function StrategyFunnel({
                 <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
                   <span>5</span>
                   <span>~${(aiBaseCount * 0.003).toFixed(3)}</span>
-                  <span>30</span>
+                  <span>200</span>
                 </div>
               </div>
 
@@ -851,10 +894,48 @@ export function StrategyFunnel({
               </Button>
             </div>
           ) : (
+            <>
+            {/* Bulk save toolbar */}
+            {selectedResults.size > 0 && (
+              <div className="flex items-center gap-3 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-2">
+                <span className="text-xs text-violet-300">
+                  <span className="font-medium">{selectedResults.size}</span> selected
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => bulkSaveMutation.mutate([...selectedResults])}
+                  disabled={bulkSaveMutation.isPending}
+                  className="h-6 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {bulkSaveMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+                  Save {selectedResults.size} Strategies
+                </Button>
+                <button
+                  onClick={() => setSelectedResults(new Set())}
+                  className="text-[11px] text-slate-500 hover:text-slate-300 ml-auto"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             <div className="overflow-x-auto rounded-lg border border-white/[0.04]">
               <table className="w-full text-xs min-w-[600px]">
                 <thead className="bg-[#0d1117]">
                   <tr className="text-slate-500">
+                    <th className="p-2 w-8">
+                      <input
+                        type="checkbox"
+                        checked={selectedResults.size === sortedResults.length && sortedResults.length > 0}
+                        onChange={() => {
+                          if (selectedResults.size === sortedResults.length) {
+                            setSelectedResults(new Set());
+                          } else {
+                            setSelectedResults(new Set(sortedResults.map((r) => r.strategy.id)));
+                          }
+                        }}
+                        className="rounded border-slate-600 accent-violet-500"
+                      />
+                    </th>
                     <th className="text-left p-2">Name</th>
                     <th className="text-left p-2">Symbol</th>
                     <SortHeader field="totalPnl" label="PnL%" current={sortField} asc={sortAsc} onClick={handleSort} />
@@ -877,6 +958,21 @@ export function StrategyFunnel({
                           } ${isExpanded ? "bg-white/[0.03]" : ""}`}
                           onClick={() => setExpandedRow(isExpanded ? null : r.strategy.id)}
                         >
+                          <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedResults.has(r.strategy.id)}
+                              onChange={() => {
+                                setSelectedResults((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(r.strategy.id)) next.delete(r.strategy.id);
+                                  else next.add(r.strategy.id);
+                                  return next;
+                                });
+                              }}
+                              className="rounded border-slate-600 accent-violet-500"
+                            />
+                          </td>
                           <td className="p-2 text-slate-300 font-medium truncate max-w-[200px]">
                             <span className="inline-flex items-center gap-1">
                               {isExpanded ? <ChevronDown className="w-3 h-3 text-slate-500" /> : <ChevronRight className="w-3 h-3 text-slate-600" />}
@@ -897,10 +993,11 @@ export function StrategyFunnel({
                             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => saveMutation.mutate(r)}
-                                className="p-1 rounded text-slate-500 hover:text-emerald-400 transition-colors"
-                                title="Save Strategy"
+                                disabled={savedResults.has(r.strategy.id)}
+                                className={`p-1 rounded transition-colors ${savedResults.has(r.strategy.id) ? "text-emerald-400" : "text-slate-500 hover:text-emerald-400"}`}
+                                title={savedResults.has(r.strategy.id) ? "Saved" : "Save Strategy"}
                               >
-                                <Save className="w-3.5 h-3.5" />
+                                {savedResults.has(r.strategy.id) ? <CheckSquare className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
                               </button>
                               {onActivate && (
                                 <button
@@ -938,6 +1035,7 @@ export function StrategyFunnel({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}

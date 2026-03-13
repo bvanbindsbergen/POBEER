@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth();
 
     const body = await req.json();
-    const aiBaseCount: number = Math.min(body.count || 20, 30); // Claude generates up to 30 unique ideas
+    const aiBaseCount: number = Math.min(body.count || 20, 1000); // Support up to 1000 via batching
     const targetTotal: number = body.targetTotal || aiBaseCount; // expand with SL/TP variations to reach this
     const userPrompt: string = body.prompt || "";
     const timeframe: string = body.timeframe || "1h";
@@ -100,22 +100,62 @@ export async function POST(req: NextRequest) {
 
     const client = new Anthropic({ apiKey });
 
-    // Scale max_tokens: ~80 tokens per strategy for compact JSON
-    const maxTokens = Math.min(Math.max(aiBaseCount * 150, 2048), 16384);
-
     const riskNote = noRiskManagement
       ? `\nRISK MANAGEMENT: DISABLED. Do NOT include stopLossPercent or takeProfitPercent. Set positionSizePercent to 100. Focus purely on entry/exit signal quality.`
       : `\nInclude stopLossPercent, takeProfitPercent, and positionSizePercent: ${positionSizePercent} in each strategy.`;
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: maxTokens,
-      messages: [
-        {
-          role: "user",
-          content: `Generate exactly ${aiBaseCount} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    type RawStrategy = {
+      name: string;
+      symbol: string;
+      reasoning?: string;
+      sourceSignal?: string;
+      tags?: string[];
+      strategyConfig: {
+        entryConditions: Array<Record<string, unknown>>;
+        exitConditions: Array<Record<string, unknown>>;
+        stopLossPercent?: number;
+        takeProfitPercent?: number;
+        positionSizePercent: number;
+      };
+    };
+
+    // Batch into chunks of 30 (Claude's reliable limit per call)
+    const BATCH_SIZE = 30;
+    const batches: number[] = [];
+    let remaining = aiBaseCount;
+    while (remaining > 0) {
+      const chunk = Math.min(remaining, BATCH_SIZE);
+      batches.push(chunk);
+      remaining -= chunk;
+    }
+
+    // Run batches in parallel (max 5 concurrent)
+    const MAX_CONCURRENT = 5;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let rawStrategies: RawStrategy[] = [];
+
+    for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
+      const batchSlice = batches.slice(i, i + MAX_CONCURRENT);
+      const batchResults = await Promise.all(
+        batchSlice.map(async (count, batchIdx) => {
+          const batchNum = i + batchIdx + 1;
+          const diversityHint = batches.length > 1
+            ? `\nThis is batch ${batchNum} of ${batches.length}. Generate DIFFERENT strategies than typical — vary indicators, params, and coins. Batch ${batchNum} focus: ${
+              ["momentum & trend", "mean-reversion & oscillators", "volatility & breakout", "divergence & multi-indicator", "cross-asset & unconventional"][batchIdx % 5]
+            } strategies.`
+            : "";
+
+          const maxTokens = Math.min(Math.max(count * 150, 2048), 16384);
+          const response = await client.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: maxTokens,
+            messages: [
+              {
+                role: "user",
+                content: `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
-${feedbackStr}
+${feedbackStr}${diversityHint}
 
 CURRENT MARKET DATA (last 14 days, ${timeframe} timeframe):
 ${JSON.stringify(technicals, null, 2)}
@@ -138,58 +178,51 @@ RULES:
 - Vary across coins AND indicator combinations
 - Names under 30 chars, compact JSON
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
-        },
-      ],
-    });
+              },
+            ],
+          });
 
-    // Parse response
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+          return response;
+        })
+      );
 
-    type RawStrategy = {
-      name: string;
-      symbol: string;
-      reasoning?: string;
-      sourceSignal?: string;
-      tags?: string[];
-      strategyConfig: {
-        entryConditions: Array<Record<string, unknown>>;
-        exitConditions: Array<Record<string, unknown>>;
-        stopLossPercent?: number;
-        takeProfitPercent?: number;
-        positionSizePercent: number;
-      };
-    };
+      // Parse all batch responses
+      for (const response of batchResults) {
+        totalInputTokens += response.usage.input_tokens;
+        totalOutputTokens += response.usage.output_tokens;
 
-    let rawStrategies: RawStrategy[] = [];
+        const text = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
 
-    try {
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        rawStrategies = JSON.parse(jsonMatch[0]);
-      }
-    } catch {
-      // If full array parse fails, try to extract individual JSON objects
-      console.warn("[Funnel AI] Full array parse failed, attempting partial recovery");
-      const objectMatches = text.matchAll(/\{[^{}]*"strategyConfig"\s*:\s*\{[^}]*"entryConditions"[\s\S]*?"positionSizePercent"\s*:\s*\d+\s*\}\s*\}/g);
-      for (const match of objectMatches) {
         try {
-          const obj = JSON.parse(match[0]) as RawStrategy;
-          if (obj.name && obj.symbol && obj.strategyConfig?.entryConditions) {
-            rawStrategies.push(obj);
+          const jsonMatch = text.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            rawStrategies.push(...JSON.parse(jsonMatch[0]));
           }
         } catch {
-          // Skip unparseable objects
+          console.warn("[Funnel AI] Full array parse failed, attempting partial recovery");
+          const objectMatches = text.matchAll(/\{[^{}]*"strategyConfig"\s*:\s*\{[^}]*"entryConditions"[\s\S]*?"positionSizePercent"\s*:\s*\d+\s*\}\s*\}/g);
+          for (const match of objectMatches) {
+            try {
+              const obj = JSON.parse(match[0]) as RawStrategy;
+              if (obj.name && obj.symbol && obj.strategyConfig?.entryConditions) {
+                rawStrategies.push(obj);
+              }
+            } catch {
+              // Skip unparseable objects
+            }
+          }
         }
       }
-      if (rawStrategies.length === 0) {
-        console.error("[Funnel AI] Could not parse any strategies from response");
-        return NextResponse.json({ error: "Failed to parse AI response. Try generating fewer strategies." }, { status: 500 });
-      }
-      console.log(`[Funnel AI] Recovered ${rawStrategies.length} of ${aiBaseCount} strategies`);
     }
+
+    if (rawStrategies.length === 0) {
+      console.error("[Funnel AI] Could not parse any strategies from response");
+      return NextResponse.json({ error: "Failed to parse AI response. Try again." }, { status: 500 });
+    }
+    console.log(`[Funnel AI] Generated ${rawStrategies.length} of ${aiBaseCount} strategies (${batches.length} batch${batches.length > 1 ? "es" : ""})`);
 
     // Convert AI base strategies to GeneratedStrategy format
     const baseStrategies: GeneratedStrategy[] = rawStrategies.map((s, i) => ({
@@ -256,8 +289,8 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
     const elapsed = performance.now() - start;
 
     // Token usage for cost reporting
-    const inputTokens = response.usage.input_tokens;
-    const outputTokens = response.usage.output_tokens;
+    const inputTokens = totalInputTokens;
+    const outputTokens = totalOutputTokens;
     const estimatedCost = (inputTokens * 3 / 1_000_000) + (outputTokens * 15 / 1_000_000);
 
     return NextResponse.json({
