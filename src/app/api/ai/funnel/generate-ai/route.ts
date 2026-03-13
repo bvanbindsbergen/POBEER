@@ -16,6 +16,9 @@ const TOP_SYMBOLS = [
   "APT/USDT", "ARB/USDT", "OP/USDT", "INJ/USDT", "SUI/USDT",
 ];
 
+// Allow up to 5 minutes for large batch generation
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth();
@@ -137,7 +140,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
       const batchSlice = batches.slice(i, i + MAX_CONCURRENT);
-      const batchResults = await Promise.all(
+      const batchResults = await Promise.allSettled(
         batchSlice.map(async (count, batchIdx) => {
           const batchNum = i + batchIdx + 1;
           const diversityHint = batches.length > 1
@@ -186,8 +189,13 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         })
       );
 
-      // Parse all batch responses
-      for (const response of batchResults) {
+      // Parse successful batch responses (skip failures)
+      for (const result of batchResults) {
+        if (result.status !== "fulfilled") {
+          console.error("[Funnel AI] Batch failed:", result.reason);
+          continue;
+        }
+        const response = result.value;
         totalInputTokens += response.usage.input_tokens;
         totalOutputTokens += response.usage.output_tokens;
 
@@ -309,6 +317,7 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error("[Funnel AI Generate] Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: `Generation failed: ${msg}` }, { status: 500 });
   }
 }
