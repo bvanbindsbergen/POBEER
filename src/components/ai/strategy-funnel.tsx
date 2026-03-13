@@ -888,9 +888,9 @@ export function StrategyFunnel({
                           <td className={`p-2 font-medium ${(r.metrics.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                             {(r.metrics.totalPnl ?? 0) >= 0 ? "+" : ""}{safeFixed(r.metrics.totalPnl, 1)}%
                           </td>
-                          <td className="p-2 text-slate-300">{safeFixed(r.metrics.winRate, 0)}%</td>
+                          <td className="p-2 text-slate-300">{safeFixed((r.metrics.winRate ?? 0) * 100, 0)}%</td>
                           <td className="p-2 text-slate-300">{safeFixed(r.metrics.sharpeRatio, 2)}</td>
-                          <td className="p-2 text-red-400">{safeFixed(r.metrics.maxDrawdown, 1)}%</td>
+                          <td className="p-2 text-red-400">{safeFixed((r.metrics.maxDrawdown ?? 0) * 100, 1)}%</td>
                           <td className="p-2 text-slate-300">{safeFixed(r.metrics.profitFactor, 2)}</td>
                           <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
                           <td className="p-2">
@@ -979,16 +979,22 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
   const { strategy, trades, equityCurve, metrics } = result;
   const config = strategy.strategyConfig;
   const [candles, setCandles] = useState<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }[] | null>(null);
+  const [candleError, setCandleError] = useState(false);
 
   // Fetch candles for price chart
   useEffect(() => {
     let cancelled = false;
+    setCandleError(false);
+    setCandles(null);
     fetch(`/api/ai/market/candles?symbol=${encodeURIComponent(strategy.symbol)}&timeframe=${timeframe}&days=${daysBack}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => {
-        if (!cancelled && data?.candles) setCandles(data.candles);
+        if (!cancelled) {
+          if (data?.candles?.length) setCandles(data.candles);
+          else setCandleError(true);
+        }
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setCandleError(true); });
     return () => { cancelled = true; };
   }, [strategy.symbol, timeframe, daysBack]);
 
@@ -1047,12 +1053,17 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
       </div>
 
       {/* Price chart with trade markers */}
-      {candles && candles.length > 0 && (
+      {candles && candles.length > 0 ? (
         <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3">
           <div className="text-[10px] text-slate-600 mb-2 font-medium uppercase tracking-wider">Price Chart with Trade Markers</div>
           <PriceChart candles={candles} trades={trades?.map((t) => ({ ...t, entryIndex: 0, exitIndex: 0, side: "long" as const }))} height={300} />
         </div>
-      )}
+      ) : !candleError ? (
+        <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3 flex items-center justify-center py-6">
+          <Loader2 className="w-4 h-4 animate-spin text-slate-500 mr-2" />
+          <span className="text-xs text-slate-500">Loading price chart...</span>
+        </div>
+      ) : null}
 
       {/* Strategy config */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-lg bg-[#111827] border border-white/[0.04] p-3">
@@ -1081,8 +1092,15 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
         <div>
           <div className="text-[10px] text-slate-600 mb-1.5 font-medium uppercase tracking-wider">Risk Management</div>
           <div className="space-y-0.5">
-            <div className="text-[11px] text-red-400">Stop Loss: {config.stopLossPercent || "—"}%</div>
-            <div className="text-[11px] text-emerald-400">Take Profit: {config.takeProfitPercent || "—"}%</div>
+            {config.stopLossPercent ? (
+              <div className="text-[11px] text-red-400">Stop Loss: {config.stopLossPercent}%</div>
+            ) : null}
+            {config.takeProfitPercent ? (
+              <div className="text-[11px] text-emerald-400">Take Profit: {config.takeProfitPercent}%</div>
+            ) : null}
+            {!config.stopLossPercent && !config.takeProfitPercent && (
+              <div className="text-[11px] text-slate-500">No SL/TP (pure signal)</div>
+            )}
             <div className="text-[11px] text-slate-400">Position Size: {config.positionSizePercent}%</div>
           </div>
         </div>

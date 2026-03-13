@@ -210,9 +210,9 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
       tags: [...(s.tags || []), "ai-generated", ...(noRiskManagement ? ["no-rm"] : [])],
     }));
 
-    // If targetTotal > base count, expand with SL/TP variations
+    // If targetTotal > base count, expand with SL/TP variations (skip if noRiskManagement)
     let strategies: GeneratedStrategy[];
-    if (targetTotal > baseStrategies.length) {
+    if (!noRiskManagement && targetTotal > baseStrategies.length) {
       strategies = [];
       let idCounter = 0;
       for (const base of baseStrategies) {
