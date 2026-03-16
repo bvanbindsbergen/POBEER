@@ -68,6 +68,29 @@ function safeFixed(v: number | null | undefined, digits: number): string {
   return v.toFixed(digits);
 }
 
+/** Format a condition indicator with its params for display, e.g. "RSI(14)" or "EMA(21)" or "MACD.signal" */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatIndicator(indicator: string, params?: any, field?: string): string {
+  const name = indicator.toUpperCase();
+  const fieldSuffix = field ? `.${field}` : "";
+  if (!params || typeof params !== "object" || Object.keys(params).length === 0) return `${name}${fieldSuffix}`;
+  const paramStr = Object.values(params).join(",");
+  return `${name}(${paramStr})${fieldSuffix}`;
+}
+
+/** Format a full condition like "RSI(14) crosses_above RSI(28)" */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatCondition(c: any): string {
+  const left = formatIndicator(c.indicator, c.params, c.field);
+  const op = c.operator.replace(/_/g, " ");
+  if (typeof c.value === "object" && c.value !== null && "indicator" in c.value) {
+    const v = c.value as { indicator: string; params?: Record<string, unknown>; field?: string };
+    const right = formatIndicator(v.indicator, v.params, v.field);
+    return `${left} ${op} ${right}`;
+  }
+  return `${left} ${op} ${c.value}`;
+}
+
 const SL_PRESETS = {
   Conservative: [2, 3, 5],
   Moderate: [3, 5, 8],
@@ -1173,7 +1196,7 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
             {config.entryConditions.map((c, i) => (
               <div key={i} className="text-[11px] text-emerald-400 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
+                {formatCondition(c)}
               </div>
             ))}
           </div>
@@ -1184,7 +1207,7 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
             {config.exitConditions.map((c, i) => (
               <div key={i} className="text-[11px] text-red-400 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                {c.indicator}{c.field ? `.${c.field}` : ""} {c.operator} {typeof c.value === "object" ? `${c.value.indicator}${c.value.field ? `.${c.value.field}` : ""}` : c.value}
+                {formatCondition(c)}
               </div>
             ))}
           </div>
