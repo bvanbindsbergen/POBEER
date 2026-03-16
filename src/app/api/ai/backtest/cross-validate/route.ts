@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { fetchCandles } from "@/lib/ai/data/candles";
+import { fetchCandlesBatch } from "@/lib/ai/data/candles";
 import { runBacktest } from "@/lib/ai/backtest/engine";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 
@@ -30,18 +30,17 @@ export async function POST(req: NextRequest) {
     const start = performance.now();
     const INITIAL_EQUITY = 10000;
 
-    // Fetch candles for each symbol × dateRange individually
-    // (fetchOHLCV caps at 1000 candles, so fetching once with maxDays misses recent data)
-    const fetchJobs: { symbol: string; range: { label: string; days: number } }[] = [];
+    // Build fetch jobs for each symbol × dateRange
+    const fetchJobs: { symbol: string; timeframe: string; daysBack: number; range: { label: string; days: number } }[] = [];
     for (const symbol of symbols) {
       for (const range of dateRanges) {
-        fetchJobs.push({ symbol, range });
+        fetchJobs.push({ symbol, timeframe, daysBack: range.days, range });
       }
     }
 
-    // Run all fetches in parallel (max ~30 concurrent)
-    const candleResults = await Promise.allSettled(
-      fetchJobs.map((job) => fetchCandles(job.symbol, timeframe, job.range.days))
+    // Use throttled batch fetching (respects concurrency limits)
+    const candleResults = await fetchCandlesBatch(
+      fetchJobs.map((job) => ({ symbol: job.symbol, timeframe: job.timeframe, daysBack: job.daysBack }))
     );
 
     // Run backtests for each symbol × dateRange combo

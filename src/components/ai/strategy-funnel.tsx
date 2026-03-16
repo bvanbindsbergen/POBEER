@@ -20,6 +20,8 @@ import {
   Cpu,
   TrendingUp,
   TrendingDown,
+  Rocket,
+  Check,
 } from "lucide-react";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 import { PriceChart } from "./charts/price-chart";
@@ -144,6 +146,24 @@ export function StrategyFunnel({
 
   const positionSizePercent = 10;
 
+  // Autopilot mode
+  const [autopilot, setAutopilot] = useState(false);
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
+  const [autopilotPhases, setAutopilotPhases] = useState<{
+    generate: "idle" | "running" | "done" | "error";
+    backtest: "idle" | "running" | "done" | "error";
+    crossValidate: "idle" | "running" | "done" | "error";
+  }>({ generate: "idle", backtest: "idle", crossValidate: "idle" });
+  const [autopilotMessage, setAutopilotMessage] = useState("");
+  const [autopilotStats, setAutopilotStats] = useState<{
+    totalGenerated?: number;
+    totalTested?: number;
+    totalPassed?: number;
+    totalWinners?: number;
+  }>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [autopilotWinners, setAutopilotWinners] = useState<any[]>([]);
+
   // Stage 2 state
   const [generated, setGenerated] = useState<GeneratedStrategy[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -161,6 +181,123 @@ export function StrategyFunnel({
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [savedResults, setSavedResults] = useState<Set<string>>(new Set());
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
+
+  // Autopilot launch
+  const launchAutopilot = useCallback(async () => {
+    setAutopilotRunning(true);
+    setAutopilotPhases({ generate: "running", backtest: "idle", crossValidate: "idle" });
+    setAutopilotMessage("Starting Auto-Pilot...");
+    setAutopilotStats({});
+    setAutopilotWinners([]);
+    setResults([]);
+    setGenerated([]);
+
+    try {
+      const res = await fetch("/api/ai/funnel/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          timeframe,
+          minProfitPercent,
+          daysBack,
+          topN: 10,
+          positionSizePercent,
+          // Algo config
+          maxStrategies,
+          slRange: SL_PRESETS[slPreset],
+          tpRange: TP_PRESETS[tpPreset],
+          // AI config
+          aiBaseCount,
+          aiTargetTotal: aiExpand ? aiTargetTotal : aiBaseCount,
+          aiPrompt,
+          noRiskManagement: aiNoRiskManagement,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Autopilot failed");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            setAutopilotMessage(event.message);
+
+            // Update phase states
+            if (event.phase === "generate") {
+              if (event.status === "started") setAutopilotPhases((p) => ({ ...p, generate: "running" }));
+              else if (event.status === "completed") {
+                setAutopilotPhases((p) => ({ ...p, generate: "done" }));
+                if (event.data?.count) setAutopilotStats((s) => ({ ...s, totalGenerated: event.data.count }));
+              }
+            } else if (event.phase === "backtest") {
+              if (event.status === "started") setAutopilotPhases((p) => ({ ...p, backtest: "running" }));
+              else if (event.status === "completed") {
+                setAutopilotPhases((p) => ({ ...p, backtest: "done" }));
+                if (event.data) setAutopilotStats((s) => ({ ...s, totalTested: event.data.totalTested, totalPassed: event.data.totalPassed }));
+              }
+            } else if (event.phase === "cross-validate") {
+              if (event.status === "started") setAutopilotPhases((p) => ({ ...p, crossValidate: "running" }));
+              else if (event.status === "completed") setAutopilotPhases((p) => ({ ...p, crossValidate: "done" }));
+            } else if (event.phase === "done" && event.data) {
+              setAutopilotStats((s) => ({ ...s, totalWinners: event.data.totalWinners }));
+              setAutopilotWinners(event.data.winners || []);
+              // Populate results table for Stage 3 compatibility
+              if (event.data.winners?.length) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setResults(event.data.winners.map((w: any) => ({
+                  strategy: w.strategy,
+                  metrics: w.metrics,
+                  trades: w.trades,
+                  equityCurve: w.equityCurve,
+                })));
+                setBatchStats({
+                  totalTested: event.data.totalTested || 0,
+                  totalPassed: event.data.totalWinners || 0,
+                  executionTimeMs: 0,
+                });
+                setStage(3);
+              }
+            } else if (event.phase === "error") {
+              setAutopilotPhases((p) => ({
+                generate: p.generate === "running" ? "error" : p.generate,
+                backtest: p.backtest === "running" ? "error" : p.backtest,
+                crossValidate: p.crossValidate === "running" ? "error" : p.crossValidate,
+              }));
+            }
+          } catch {
+            // skip unparseable lines
+          }
+        }
+      }
+    } catch (err) {
+      setAutopilotMessage(err instanceof Error ? err.message : "Autopilot failed");
+      setAutopilotPhases((p) => ({
+        generate: p.generate === "running" ? "error" : p.generate,
+        backtest: p.backtest === "running" ? "error" : p.backtest,
+        crossValidate: p.crossValidate === "running" ? "error" : p.crossValidate,
+      }));
+    } finally {
+      setAutopilotRunning(false);
+    }
+  }, [mode, timeframe, minProfitPercent, daysBack, positionSizePercent, maxStrategies, slPreset, tpPreset, aiBaseCount, aiExpand, aiTargetTotal, aiPrompt, aiNoRiskManagement]);
 
   // Generate mutation
   const generateMutation = useMutation({
@@ -469,6 +606,21 @@ export function StrategyFunnel({
             </button>
           </div>
 
+          {/* Auto-Pilot toggle */}
+          <label className="flex items-center gap-2 text-xs cursor-pointer group">
+            <div className={`relative w-9 h-5 rounded-full transition-colors ${autopilot ? "bg-amber-500" : "bg-slate-700"}`}
+              onClick={() => setAutopilot(!autopilot)}>
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autopilot ? "translate-x-4.5 left-0.5" : "left-0.5"}`}
+                style={autopilot ? { transform: "translateX(18px)" } : {}} />
+            </div>
+            <span className={`font-medium ${autopilot ? "text-amber-400" : "text-slate-400 group-hover:text-slate-300"}`}>
+              Auto-Pilot
+            </span>
+            <span className="text-[9px] text-slate-600">
+              (generate → backtest → cross-validate → winners)
+            </span>
+          </label>
+
           {/* Shared config */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -687,8 +839,21 @@ export function StrategyFunnel({
             </div>
           )}
 
-          {/* Generate button */}
-          {mode === "algo" ? (
+          {/* Generate / Auto-Pilot button */}
+          {autopilot ? (
+            <Button
+              onClick={launchAutopilot}
+              disabled={autopilotRunning}
+              className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {autopilotRunning ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Rocket className="w-4 h-4 mr-2" />
+              )}
+              {autopilotRunning ? "Running..." : "Launch Auto-Pilot"}
+            </Button>
+          ) : mode === "algo" ? (
             <Button
               onClick={() => generateMutation.mutate()}
               disabled={generateMutation.isPending}
@@ -714,6 +879,36 @@ export function StrategyFunnel({
               )}
               Generate {aiExpand ? aiTargetTotal : aiBaseCount} AI Strategies
             </Button>
+          )}
+
+          {/* Auto-Pilot progress */}
+          {(autopilotRunning || autopilotWinners.length > 0) && autopilot && (
+            <div className="rounded-lg bg-amber-500/5 border border-amber-500/10 p-3 space-y-2">
+              <div className="flex items-center gap-3 text-xs">
+                <AutopilotPhaseIndicator label="Generate" status={autopilotPhases.generate} />
+                <ChevronRight className="w-3 h-3 text-slate-600" />
+                <AutopilotPhaseIndicator label="Backtest" status={autopilotPhases.backtest} />
+                <ChevronRight className="w-3 h-3 text-slate-600" />
+                <AutopilotPhaseIndicator label="Cross-Validate" status={autopilotPhases.crossValidate} />
+              </div>
+              <p className="text-[11px] text-slate-400">{autopilotMessage}</p>
+              {Object.keys(autopilotStats).length > 0 && (
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  {autopilotStats.totalGenerated != null && (
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">Generated: {autopilotStats.totalGenerated}</span>
+                  )}
+                  {autopilotStats.totalTested != null && (
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400">Tested: {autopilotStats.totalTested}</span>
+                  )}
+                  {autopilotStats.totalPassed != null && (
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">Passed: {autopilotStats.totalPassed}</span>
+                  )}
+                  {autopilotStats.totalWinners != null && (
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">Winners: {autopilotStats.totalWinners}</span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {generateMutation.isError && (
@@ -972,12 +1167,16 @@ export function StrategyFunnel({
                     <SortHeader field="maxDrawdown" label="DD%" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="profitFactor" label="PF" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="totalTrades" label="Trades" current={sortField} asc={sortAsc} onClick={handleSort} />
+                    {autopilotWinners.length > 0 && <th className="text-left p-2 text-amber-500">CV Score</th>}
                     <th className="text-left p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedResults.map((r, i) => {
                     const isExpanded = expandedRow === r.strategy.id;
+                    // Find CV data if from autopilot
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const cvData = autopilotWinners.find((w: any) => w.strategy.id === r.strategy.id)?.crossValidation;
                     return (
                       <React.Fragment key={r.strategy.id}>
                         <tr
@@ -1017,6 +1216,17 @@ export function StrategyFunnel({
                           <td className="p-2 text-red-400">{safeFixed((r.metrics.maxDrawdown ?? 0) * 100, 1)}%</td>
                           <td className="p-2 text-slate-300">{safeFixed(r.metrics.profitFactor, 2)}</td>
                           <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
+                          {autopilotWinners.length > 0 && (
+                            <td className="p-2">
+                              {cvData ? (
+                                <span className="text-amber-400 font-medium" title={`${Math.round(cvData.profitableRatio * 100)}% profitable, avg ${safeFixed(cvData.avgPnl, 1)}%`}>
+                                  {Math.round(cvData.profitableRatio * 100)}% / {safeFixed(cvData.avgPnl, 1)}%
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              )}
+                            </td>
+                          )}
                           <td className="p-2">
                             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
@@ -1052,7 +1262,7 @@ export function StrategyFunnel({
                         {/* Expanded detail row */}
                         {isExpanded && (
                           <tr className="border-t border-white/[0.02]">
-                            <td colSpan={9} className="p-0">
+                            <td colSpan={autopilotWinners.length > 0 ? 11 : 10} className="p-0">
                               <StrategyDetail result={r} timeframe={timeframe} daysBack={daysBack} />
                             </td>
                           </tr>
@@ -1331,6 +1541,21 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
         </div>
       )}
     </div>
+  );
+}
+
+function AutopilotPhaseIndicator({ label, status }: { label: string; status: "idle" | "running" | "done" | "error" }) {
+  return (
+    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+      status === "done" ? "bg-emerald-500/15 text-emerald-400" :
+      status === "running" ? "bg-amber-500/15 text-amber-400" :
+      status === "error" ? "bg-red-500/15 text-red-400" :
+      "bg-slate-800 text-slate-600"
+    }`}>
+      {status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
+      {status === "done" && <Check className="w-3 h-3" />}
+      {label}
+    </span>
   );
 }
 

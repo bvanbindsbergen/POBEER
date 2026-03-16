@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { fetchCandles } from "@/lib/ai/data/candles";
+import { fetchCandlesBatch, type Candle } from "@/lib/ai/data/candles";
 import { runBacktest } from "@/lib/ai/backtest/engine";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 import type { Trade, EquityPoint } from "@/lib/ai/backtest/types";
@@ -31,13 +31,13 @@ export async function POST(req: NextRequest) {
       bySymbol.set(s.symbol, list);
     }
 
-    // Fetch candles per symbol IN PARALLEL (key fix for large batches)
+    // Fetch candles per symbol with throttled concurrency
     const symbolList = [...bySymbol.keys()];
-    const candleResults = await Promise.allSettled(
-      symbolList.map((symbol) => fetchCandles(symbol, timeframe, daysBack))
+    const candleResults = await fetchCandlesBatch(
+      symbolList.map((symbol) => ({ symbol, timeframe, daysBack }))
     );
 
-    const candleCache = new Map<string, Awaited<ReturnType<typeof fetchCandles>>>();
+    const candleCache = new Map<string, Candle[]>();
     for (let i = 0; i < symbolList.length; i++) {
       const result = candleResults[i];
       if (result.status === "fulfilled" && result.value.length >= 30) {
