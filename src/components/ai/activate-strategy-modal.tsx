@@ -45,16 +45,28 @@ export function ActivateStrategyModal({
   const activate = useMutation({
     mutationFn: async () => {
       if (!source) throw new Error("No source");
+
+      // If the ID is a temp/funnel ID (not a real UUID), use inline mode
+      const isInline = source.id.startsWith("ai-") || source.id.startsWith("gen-");
+      const payload: Record<string, unknown> = {
+        maxCapUsd,
+        maxCapPercent,
+        dailyLossLimitUsd,
+        sourceType: isInline ? "inline" : source.sourceType,
+        mode: tradingMode,
+      };
+
+      if (isInline) {
+        payload.inlineName = source.name;
+        payload.inlineSymbol = source.symbol;
+        payload.inlineTimeframe = source.timeframe;
+        payload.inlineConfig = source.strategyConfig;
+      }
+
       const res = await fetch(`/api/ai/strategies/${source.id}/activate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          maxCapUsd,
-          maxCapPercent,
-          dailyLossLimitUsd,
-          sourceType: source.sourceType,
-          mode: tradingMode,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json();

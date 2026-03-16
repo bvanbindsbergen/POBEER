@@ -62,7 +62,17 @@ export async function POST(
     let strategyConfig: string;
     let backtestId: string | null = null;
 
-    if (sourceType === "backtest") {
+    if (sourceType === "inline") {
+      // Inline source — strategy config passed directly in the request body (e.g. from funnel results)
+      const { inlineName, inlineSymbol, inlineTimeframe, inlineConfig } = body;
+      if (!inlineName || !inlineSymbol || !inlineTimeframe || !inlineConfig) {
+        return NextResponse.json({ error: "Missing inline strategy fields" }, { status: 400 });
+      }
+      name = inlineName;
+      symbol = inlineSymbol;
+      timeframe = inlineTimeframe;
+      strategyConfig = typeof inlineConfig === "string" ? inlineConfig : JSON.stringify(inlineConfig);
+    } else if (sourceType === "backtest") {
       // Load from backtest
       const [bt] = await db
         .select()
