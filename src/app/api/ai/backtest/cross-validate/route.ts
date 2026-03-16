@@ -30,14 +30,19 @@ export async function POST(req: NextRequest) {
     const start = performance.now();
     const INITIAL_EQUITY = 10000;
 
-    // Fetch candles for all symbols in parallel (use max days from all ranges)
-    const maxDays = Math.max(...dateRanges.map((r) => r.days));
-    const candleResults = await Promise.allSettled(
-      symbols.map((s) => fetchCandles(s, timeframe, maxDays))
-    );
+    // Fetch candles for each symbol × dateRange individually
+    // (fetchOHLCV caps at 1000 candles, so fetching once with maxDays misses recent data)
+    const fetchJobs: { symbol: string; range: { label: string; days: number } }[] = [];
+    for (const symbol of symbols) {
+      for (const range of dateRanges) {
+        fetchJobs.push({ symbol, range });
+      }
+    }
 
-    const candleMap = new Map<string, typeof candleResults[0]>();
-    symbols.forEach((s, i) => candleMap.set(s, candleResults[i]));
+    // Run all fetches in parallel (max ~30 concurrent)
+    const candleResults = await Promise.allSettled(
+      fetchJobs.map((job) => fetchCandles(job.symbol, timeframe, job.range.days))
+    );
 
     // Run backtests for each symbol × dateRange combo
     const results: {
@@ -52,63 +57,40 @@ export async function POST(req: NextRequest) {
       totalTrades: number;
     }[] = [];
 
-    for (const symbol of symbols) {
-      const candleResult = candleMap.get(symbol);
-      if (!candleResult || candleResult.status !== "fulfilled" || candleResult.value.length < 20) {
-        // Add empty results for this symbol
-        for (const range of dateRanges) {
-          results.push({
-            symbol,
-            dateRange: range.label,
-            days: range.days,
-            totalPnl: 0,
-            winRate: 0,
-            sharpeRatio: 0,
-            profitFactor: 0,
-            maxDrawdown: 0,
-            totalTrades: 0,
-          });
-        }
+    for (let i = 0; i < fetchJobs.length; i++) {
+      const { symbol, range } = fetchJobs[i];
+      const candleResult = candleResults[i];
+
+      if (candleResult.status !== "fulfilled" || candleResult.value.length < 20) {
+        results.push({
+          symbol, dateRange: range.label, days: range.days,
+          totalPnl: 0, winRate: 0, sharpeRatio: 0, profitFactor: 0, maxDrawdown: 0, totalTrades: 0,
+        });
         continue;
       }
 
-      const allCandles = candleResult.value;
+      try {
+        const rangeCandles = candleResult.value;
+        const result = runBacktest(rangeCandles, strategyConfig);
+        const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
 
-      for (const range of dateRanges) {
-        try {
-          // Slice candles to the date range
-          const cutoffTime = Date.now() - range.days * 24 * 60 * 60 * 1000;
-          const rangeCandles = allCandles.filter((c) => c.timestamp >= cutoffTime);
-
-          if (rangeCandles.length < 20) {
-            results.push({
-              symbol, dateRange: range.label, days: range.days,
-              totalPnl: 0, winRate: 0, sharpeRatio: 0, profitFactor: 0, maxDrawdown: 0, totalTrades: 0,
-            });
-            continue;
-          }
-
-          const result = runBacktest(rangeCandles, strategyConfig);
-          const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
-
-          results.push({
-            symbol,
-            dateRange: range.label,
-            days: range.days,
-            totalPnl: Math.round(totalReturnPct * 100) / 100,
-            winRate: Math.round(result.winRate * 10000) / 100,
-            sharpeRatio: Math.round(result.sharpeRatio * 100) / 100,
-            profitFactor: Math.round((result.profitFactor > 999 ? 999 : result.profitFactor) * 100) / 100,
-            maxDrawdown: Math.round(result.maxDrawdown * 10000) / 100,
-            totalTrades: result.totalTrades,
-          });
-        } catch (err) {
-          console.error(`[Cross-Validate] Error on ${symbol} ${range.label}:`, err);
-          results.push({
-            symbol, dateRange: range.label, days: range.days,
-            totalPnl: 0, winRate: 0, sharpeRatio: 0, profitFactor: 0, maxDrawdown: 0, totalTrades: 0,
-          });
-        }
+        results.push({
+          symbol,
+          dateRange: range.label,
+          days: range.days,
+          totalPnl: Math.round(totalReturnPct * 100) / 100,
+          winRate: Math.round(result.winRate * 10000) / 100,
+          sharpeRatio: Math.round(result.sharpeRatio * 100) / 100,
+          profitFactor: Math.round((result.profitFactor > 999 ? 999 : result.profitFactor) * 100) / 100,
+          maxDrawdown: Math.round(result.maxDrawdown * 10000) / 100,
+          totalTrades: result.totalTrades,
+        });
+      } catch (err) {
+        console.error(`[Cross-Validate] Error on ${symbol} ${range.label}:`, err);
+        results.push({
+          symbol, dateRange: range.label, days: range.days,
+          totalPnl: 0, winRate: 0, sharpeRatio: 0, profitFactor: 0, maxDrawdown: 0, totalTrades: 0,
+        });
       }
     }
 
