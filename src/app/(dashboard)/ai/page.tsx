@@ -7,6 +7,7 @@ import { ChatPanel } from "@/components/ai/chat/chat-panel";
 import { BacktestConfig } from "@/components/ai/backtest/backtest-config";
 import { BacktestResults } from "@/components/ai/backtest/backtest-results";
 import { BacktestList } from "@/components/ai/backtest/backtest-list";
+import { CrossValidate } from "@/components/ai/backtest/cross-validate";
 import { StrategyDiscovery } from "@/components/ai/strategy-discovery";
 import { ActivateStrategyModal } from "@/components/ai/activate-strategy-modal";
 import { OperationalDashboard } from "@/components/ai/operational-dashboard";
@@ -116,6 +117,11 @@ export default function AIPage() {
     winRate?: number | string;
     sharpeRatio?: number | string;
   } | null>(null);
+  const [lastBacktestConfig, setLastBacktestConfig] = useState<{
+    symbol: string;
+    timeframe: string;
+    strategyConfig: StrategyConfig;
+  } | null>(null);
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
   const [walkForwardLoading, setWalkForwardLoading] = useState(false);
   const [funnelSignals, setFunnelSignals] = useState<
@@ -189,9 +195,14 @@ export default function AIPage() {
 
       return { backtest: btData.backtest, candles };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setBacktestResult(data.backtest);
       setBacktestCandles(data.candles);
+      setLastBacktestConfig({
+        symbol: variables.symbol,
+        timeframe: variables.timeframe,
+        strategyConfig: variables.strategyConfig,
+      });
       queryClient.invalidateQueries({ queryKey: ["backtests"] });
     },
   });
@@ -579,6 +590,14 @@ export default function AIPage() {
               onActivate={(source) => setActivateSource(source)}
               walkForwardResult={walkForwardResult}
               walkForwardLoading={walkForwardLoading}
+            />
+          )}
+
+          {backtestResult && lastBacktestConfig && (
+            <CrossValidate
+              strategyConfig={lastBacktestConfig.strategyConfig}
+              currentSymbol={lastBacktestConfig.symbol}
+              timeframe={lastBacktestConfig.timeframe}
             />
           )}
 
