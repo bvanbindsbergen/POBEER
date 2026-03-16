@@ -53,6 +53,14 @@ interface BacktestConfigProps {
   initialTimeframe?: string;
 }
 
+/** Format an indicator reference for display, e.g. "RSI(14)" or "EMA(21).signal" */
+function formatIndicatorRef(ref: { indicator: string; params?: Record<string, number>; field?: string }): string {
+  const name = ref.indicator.toUpperCase();
+  const field = ref.field ? `.${ref.field}` : "";
+  if (!ref.params || Object.keys(ref.params).length === 0) return `${name}${field}`;
+  return `${name}(${Object.values(ref.params).join(",")})${field}`;
+}
+
 function defaultCondition(): Condition {
   return {
     indicator: "rsi",
@@ -149,11 +157,13 @@ export function BacktestConfig({
             <Select
               value={cond.indicator}
               onValueChange={(v) =>
-                updateCondition(conditions, setConditions, i, "indicator", v)
+                updateCondition(conditions, setConditions, i, "indicator", v as unknown as number)
               }
             >
               <SelectTrigger className="w-[calc(50%-4px)] sm:w-[140px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
-                <SelectValue />
+                <span className="truncate">
+                  {formatIndicatorRef({ indicator: cond.indicator, params: cond.params as Record<string, number> | undefined, field: cond.field })}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {INDICATORS.map((ind) => (
@@ -180,21 +190,27 @@ export function BacktestConfig({
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              type="number"
-              value={typeof cond.value === "number" ? cond.value : ""}
-              onChange={(e) =>
-                updateCondition(
-                  conditions,
-                  setConditions,
-                  i,
-                  "value",
-                  Number(e.target.value)
-                )
-              }
-              className="flex-1 min-w-[60px] sm:w-20 sm:flex-none h-8 text-xs bg-[#070b12] border-white/[0.06]"
-              placeholder="Value"
-            />
+            {typeof cond.value === "object" && cond.value !== null && "indicator" in cond.value ? (
+              <div className="flex-1 min-w-[60px] sm:w-[160px] sm:flex-none h-8 flex items-center px-2 rounded-md bg-[#070b12] border border-white/[0.06] text-xs text-cyan-400 font-medium">
+                {formatIndicatorRef(cond.value as { indicator: string; params?: Record<string, number>; field?: string })}
+              </div>
+            ) : (
+              <Input
+                type="number"
+                value={typeof cond.value === "number" ? cond.value : ""}
+                onChange={(e) =>
+                  updateCondition(
+                    conditions,
+                    setConditions,
+                    i,
+                    "value",
+                    Number(e.target.value)
+                  )
+                }
+                className="flex-1 min-w-[60px] sm:w-20 sm:flex-none h-8 text-xs bg-[#070b12] border-white/[0.06]"
+                placeholder="Value"
+              />
+            )}
             {conditions.length > 1 && (
               <Button
                 type="button"
