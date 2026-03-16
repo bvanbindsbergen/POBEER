@@ -182,6 +182,31 @@ export function StrategyFunnel({
   const [savedResults, setSavedResults] = useState<Set<string>>(new Set());
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
 
+  // Cross-validation state (Stage 3 feature)
+  const [cvOpen, setCvOpen] = useState(false);
+  const [cvRunning, setCvRunning] = useState(false);
+  const [cvSymbols, setCvSymbols] = useState<Set<string>>(
+    new Set(["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"])
+  );
+  const [cvRanges, setCvRanges] = useState<Set<string>>(new Set(["30d", "90d", "180d"]));
+  const [cvResultsMap, setCvResultsMap] = useState<Map<string, {
+    results: { symbol: string; dateRange: string; totalPnl: number; winRate: number; sharpeRatio: number; totalTrades: number }[];
+    profitableRatio: number;
+    avgPnl: number;
+  }>>(new Map());
+
+  const CV_SYMBOL_OPTIONS = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
+    "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "NEAR/USDT",
+  ];
+  const CV_RANGE_OPTIONS: { label: string; days: number }[] = [
+    { label: "30d", days: 30 },
+    { label: "60d", days: 60 },
+    { label: "90d", days: 90 },
+    { label: "180d", days: 180 },
+    { label: "365d", days: 365 },
+  ];
+
   // Autopilot launch
   const launchAutopilot = useCallback(async () => {
     setAutopilotRunning(true);
@@ -516,6 +541,53 @@ export function StrategyFunnel({
     });
     return sorted;
   }, [results, sortField, sortAsc]);
+
+  const runCrossValidation = useCallback(async () => {
+    const strategiesToTest = sortedResults.filter((r) => selectedResults.has(r.strategy.id));
+    if (!strategiesToTest.length) return;
+
+    setCvRunning(true);
+    const newResults = new Map(cvResultsMap);
+    const symbols = [...cvSymbols];
+    const dateRanges = CV_RANGE_OPTIONS.filter((r) => cvRanges.has(r.label));
+
+    try {
+      for (const item of strategiesToTest) {
+        try {
+          const res = await fetch("/api/ai/backtest/cross-validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              symbols,
+              timeframe,
+              strategyConfig: item.strategy.strategyConfig,
+              dateRanges,
+            }),
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+
+          const withTrades = (data.results || []).filter((r: { totalTrades: number }) => r.totalTrades > 0);
+          const profitable = withTrades.filter((r: { totalPnl: number }) => r.totalPnl > 0);
+          const profitableRatio = withTrades.length > 0 ? profitable.length / withTrades.length : 0;
+          const avgPnl = withTrades.length > 0
+            ? withTrades.reduce((s: number, r: { totalPnl: number }) => s + r.totalPnl, 0) / withTrades.length
+            : 0;
+
+          newResults.set(item.strategy.id, {
+            results: data.results || [],
+            profitableRatio: Math.round(profitableRatio * 100) / 100,
+            avgPnl: Math.round(avgPnl * 100) / 100,
+          });
+          setCvResultsMap(new Map(newResults));
+        } catch {
+          // skip failed strategy
+        }
+      }
+    } finally {
+      setCvRunning(false);
+    }
+  }, [sortedResults, selectedResults, cvSymbols, cvRanges, timeframe, cvResultsMap]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortAsc(!sortAsc);
@@ -1115,9 +1187,9 @@ export function StrategyFunnel({
             </div>
           ) : (
             <>
-            {/* Bulk save toolbar */}
+            {/* Bulk action toolbar */}
             {selectedResults.size > 0 && (
-              <div className="flex items-center gap-3 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-2">
+              <div className="flex items-center gap-2 flex-wrap rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-2">
                 <span className="text-xs text-violet-300">
                   <span className="font-medium">{selectedResults.size}</span> selected
                 </span>
@@ -1131,7 +1203,16 @@ export function StrategyFunnel({
                   className="h-6 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   {bulkSaveMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
-                  Save {selectedResults.size} Strategies
+                  Save {selectedResults.size}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setCvOpen(!cvOpen)}
+                  disabled={cvRunning}
+                  className="h-6 text-[11px] bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {cvRunning ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <FlaskConical className="w-3 h-3 mr-1" />}
+                  Cross-Validate {selectedResults.size}
                 </Button>
                 <button
                   onClick={() => setSelectedResults(new Set())}
@@ -1139,6 +1220,99 @@ export function StrategyFunnel({
                 >
                   Clear
                 </button>
+              </div>
+            )}
+
+            {/* Cross-validation config panel */}
+            {cvOpen && (
+              <div className="rounded-lg bg-amber-500/5 border border-amber-500/10 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                    <FlaskConical className="w-3.5 h-3.5" />
+                    Cross-Validate Against
+                  </h4>
+                  <button onClick={() => setCvOpen(false)} className="text-[10px] text-slate-500 hover:text-slate-300">Close</button>
+                </div>
+
+                <div>
+                  <div className="text-[10px] text-slate-500 mb-1.5">Symbols</div>
+                  <div className="flex flex-wrap gap-1">
+                    {CV_SYMBOL_OPTIONS.map((sym) => (
+                      <button
+                        key={sym}
+                        onClick={() => {
+                          setCvSymbols((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(sym)) next.delete(sym);
+                            else next.add(sym);
+                            return next;
+                          });
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                          cvSymbols.has(sym)
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            : "bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300"
+                        }`}
+                      >
+                        {sym.replace("/USDT", "")}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => {
+                        if (cvSymbols.size === CV_SYMBOL_OPTIONS.length) setCvSymbols(new Set());
+                        else setCvSymbols(new Set(CV_SYMBOL_OPTIONS));
+                      }}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800/50 text-slate-600 hover:text-slate-400"
+                    >
+                      {cvSymbols.size === CV_SYMBOL_OPTIONS.length ? "None" : "All"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] text-slate-500 mb-1.5">Date Ranges</div>
+                  <div className="flex flex-wrap gap-1">
+                    {CV_RANGE_OPTIONS.map((r) => (
+                      <button
+                        key={r.label}
+                        onClick={() => {
+                          setCvRanges((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(r.label)) next.delete(r.label);
+                            else next.add(r.label);
+                            return next;
+                          });
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                          cvRanges.has(r.label)
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            : "bg-slate-800 text-slate-500 border border-transparent hover:text-slate-300"
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={runCrossValidation}
+                    disabled={cvRunning || cvSymbols.size === 0 || cvRanges.size === 0 || selectedResults.size === 0}
+                    className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    {cvRunning ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Rocket className="w-3.5 h-3.5 mr-1.5" />
+                    )}
+                    {cvRunning ? "Testing..." : `Test ${selectedResults.size} on ${cvSymbols.size} pairs × ${cvRanges.size} ranges`}
+                  </Button>
+                  {cvResultsMap.size > 0 && (
+                    <span className="text-[10px] text-slate-500">{cvResultsMap.size} strategies tested</span>
+                  )}
+                </div>
               </div>
             )}
             <div className="overflow-x-auto rounded-lg border border-white/[0.04]">
@@ -1167,16 +1341,17 @@ export function StrategyFunnel({
                     <SortHeader field="maxDrawdown" label="DD%" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="profitFactor" label="PF" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="totalTrades" label="Trades" current={sortField} asc={sortAsc} onClick={handleSort} />
-                    {autopilotWinners.length > 0 && <th className="text-left p-2 text-amber-500">CV Score</th>}
+                    {(autopilotWinners.length > 0 || cvResultsMap.size > 0) && <th className="text-left p-2 text-amber-500">CV Score</th>}
                     <th className="text-left p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedResults.map((r, i) => {
                     const isExpanded = expandedRow === r.strategy.id;
-                    // Find CV data if from autopilot
+                    // Find CV data from autopilot or manual cross-validation
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const cvData = autopilotWinners.find((w: any) => w.strategy.id === r.strategy.id)?.crossValidation;
+                    const cvData = autopilotWinners.find((w: any) => w.strategy.id === r.strategy.id)?.crossValidation
+                      || cvResultsMap.get(r.strategy.id);
                     return (
                       <React.Fragment key={r.strategy.id}>
                         <tr
@@ -1216,12 +1391,14 @@ export function StrategyFunnel({
                           <td className="p-2 text-red-400">{safeFixed((r.metrics.maxDrawdown ?? 0) * 100, 1)}%</td>
                           <td className="p-2 text-slate-300">{safeFixed(r.metrics.profitFactor, 2)}</td>
                           <td className="p-2 text-slate-400">{r.metrics.totalTrades}</td>
-                          {autopilotWinners.length > 0 && (
+                          {(autopilotWinners.length > 0 || cvResultsMap.size > 0) && (
                             <td className="p-2">
                               {cvData ? (
                                 <span className="text-amber-400 font-medium" title={`${Math.round(cvData.profitableRatio * 100)}% profitable, avg ${safeFixed(cvData.avgPnl, 1)}%`}>
                                   {Math.round(cvData.profitableRatio * 100)}% / {safeFixed(cvData.avgPnl, 1)}%
                                 </span>
+                              ) : cvRunning ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
                               ) : (
                                 <span className="text-slate-600">—</span>
                               )}
@@ -1262,8 +1439,8 @@ export function StrategyFunnel({
                         {/* Expanded detail row */}
                         {isExpanded && (
                           <tr className="border-t border-white/[0.02]">
-                            <td colSpan={autopilotWinners.length > 0 ? 11 : 10} className="p-0">
-                              <StrategyDetail result={r} timeframe={timeframe} daysBack={daysBack} />
+                            <td colSpan={(autopilotWinners.length > 0 || cvResultsMap.size > 0) ? 11 : 10} className="p-0">
+                              <StrategyDetail result={r} timeframe={timeframe} daysBack={daysBack} cvData={cvData} />
                             </td>
                           </tr>
                         )}
@@ -1311,7 +1488,13 @@ function SortHeader({
   );
 }
 
-function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult; timeframe: string; daysBack: number }) {
+interface CvDataProp {
+  results: { symbol: string; dateRange: string; totalPnl: number; winRate?: number; sharpeRatio?: number; totalTrades: number }[];
+  profitableRatio: number;
+  avgPnl: number;
+}
+
+function StrategyDetail({ result, timeframe, daysBack, cvData }: { result: FunnelResult; timeframe: string; daysBack: number; cvData?: CvDataProp }) {
   const { strategy, trades, equityCurve, metrics } = result;
   const config = strategy.strategyConfig;
   const [candles, setCandles] = useState<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }[] | null>(null);
@@ -1540,6 +1723,74 @@ function StrategyDetail({ result, timeframe, daysBack }: { result: FunnelResult;
           </div>
         </div>
       )}
+
+      {/* Cross-validation results matrix */}
+      {cvData && cvData.results.length > 0 && (
+        <div className="rounded-lg bg-[#111827] border border-amber-500/10 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] text-amber-400 font-medium uppercase tracking-wider">
+              Cross-Validation Results
+            </div>
+            <div className="flex gap-2 text-[10px]">
+              <span className={`px-2 py-0.5 rounded ${cvData.profitableRatio >= 0.6 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                {Math.round(cvData.profitableRatio * 100)}% profitable
+              </span>
+              <span className={`px-2 py-0.5 rounded ${cvData.avgPnl > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                Avg PnL: {cvData.avgPnl > 0 ? "+" : ""}{safeFixed(cvData.avgPnl, 2)}%
+              </span>
+            </div>
+          </div>
+          <CvResultsMatrix results={cvData.results} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CvResultsMatrix({ results }: { results: { symbol: string; dateRange: string; totalPnl: number; winRate?: number; sharpeRatio?: number; totalTrades: number }[] }) {
+  // Pivot into symbol × dateRange matrix
+  const symbols = [...new Set(results.map((r) => r.symbol))];
+  const ranges = [...new Set(results.map((r) => r.dateRange))];
+  const lookup = new Map(results.map((r) => [`${r.symbol}|${r.dateRange}`, r]));
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-slate-500">
+            <th className="text-left p-1.5 font-medium">Symbol</th>
+            {ranges.map((r) => (
+              <th key={r} className="text-center p-1.5 font-medium">{r}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {symbols.map((sym) => (
+            <tr key={sym} className="border-t border-white/[0.03]">
+              <td className="p-1.5 text-slate-300 font-medium">
+                {sym === results.find((r) => r.symbol === sym)?.symbol ? sym.replace("/USDT", "") : sym}
+              </td>
+              {ranges.map((range) => {
+                const cell = lookup.get(`${sym}|${range}`);
+                if (!cell || cell.totalTrades === 0) {
+                  return <td key={range} className="text-center p-1.5 text-slate-700">—</td>;
+                }
+                return (
+                  <td key={range} className="text-center p-1.5">
+                    <div className={`font-medium ${cell.totalPnl > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {cell.totalPnl > 0 ? "+" : ""}{safeFixed(cell.totalPnl, 1)}%
+                    </div>
+                    <div className="text-[9px] text-slate-500">
+                      WR {safeFixed((cell.winRate ?? 0), 1)}% · {cell.totalTrades}t
+                      {cell.sharpeRatio != null && ` · SR ${safeFixed(cell.sharpeRatio, 1)}`}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
