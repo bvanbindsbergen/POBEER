@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -118,6 +118,7 @@ export function StrategyFunnel({
   }) => void;
 }) {
   // Stage tracking
+  const queryClient = useQueryClient();
   const [stage, setStage] = useState<1 | 2 | 3>(1);
 
   // Mode: algorithmic (free) or ai (Claude-powered)
@@ -283,6 +284,7 @@ export function StrategyFunnel({
     },
     onSuccess: (data) => {
       setSavedResults((prev) => new Set(prev).add(data.id));
+      queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
     },
   });
 
@@ -317,6 +319,7 @@ export function StrategyFunnel({
         return next;
       });
       setSelectedResults(new Set());
+      queryClient.invalidateQueries({ queryKey: ["ai-strategies"] });
     },
   });
 
