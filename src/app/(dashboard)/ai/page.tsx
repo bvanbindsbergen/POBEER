@@ -33,6 +33,30 @@ import { GridDashboard } from "@/components/grid/grid-dashboard";
 import { GridStrategyForm } from "@/components/grid/grid-strategy-form";
 import { StrategyFunnel } from "@/components/ai/strategy-funnel";
 
+/** Format indicator with params for display */
+function formatIndicatorLabel(indicator: string, params?: Record<string, unknown>, field?: string): string {
+  const name = (indicator || "").toUpperCase();
+  const fieldSuffix = field ? `.${field}` : "";
+  if (!params || typeof params !== "object" || Object.keys(params).length === 0) return `${name}${fieldSuffix}`;
+  const paramStr = Object.values(params).join(",");
+  return `${name}(${paramStr})${fieldSuffix}`;
+}
+
+function formatConditionLabel(c: Record<string, unknown>): string {
+  const left = formatIndicatorLabel(
+    c.indicator as string,
+    c.params as Record<string, unknown> | undefined,
+    c.field as string | undefined
+  );
+  const op = ((c.operator as string) || "").replace(/_/g, " ");
+  if (typeof c.value === "object" && c.value !== null && "indicator" in c.value) {
+    const v = c.value as Record<string, unknown>;
+    const right = formatIndicatorLabel(v.indicator as string, v.params as Record<string, unknown> | undefined, v.field as string | undefined);
+    return `${left} ${op} ${right}`;
+  }
+  return `${left} ${op} ${c.value}`;
+}
+
 class AIErrorBoundary extends Component<
   { children: ReactNode; fallback?: ReactNode },
   { hasError: boolean; error?: Error }
@@ -425,7 +449,10 @@ export default function AIPage() {
                 }) => {
                   const config = (() => {
                     try {
-                      return JSON.parse(s.strategyConfig);
+                      let parsed = typeof s.strategyConfig === "string" ? JSON.parse(s.strategyConfig) : s.strategyConfig;
+                      // Handle double-stringified config
+                      if (typeof parsed === "string") parsed = JSON.parse(parsed);
+                      return parsed;
                     } catch {
                       return null;
                     }
@@ -456,9 +483,25 @@ export default function AIPage() {
                         </Badge>
                       </div>
                       {s.notes && (
-                        <p className="text-xs text-slate-500 mb-3 line-clamp-2">
+                        <p className="text-xs text-slate-500 mb-2 line-clamp-2">
                           {s.notes}
                         </p>
+                      )}
+                      {config?.entryConditions && (
+                        <div className="space-y-1 mb-3">
+                          {config.entryConditions.slice(0, 3).map((c: Record<string, unknown>, ci: number) => (
+                            <div key={ci} className="text-[10px] text-emerald-400/70 flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-emerald-400 flex-shrink-0" />
+                              {formatConditionLabel(c)}
+                            </div>
+                          ))}
+                          {config.exitConditions?.slice(0, 1).map((c: Record<string, unknown>, ci: number) => (
+                            <div key={ci} className="text-[10px] text-red-400/70 flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
+                              {formatConditionLabel(c)}
+                            </div>
+                          ))}
+                        </div>
                       )}
                       <div className="flex gap-2">
                         <Button
