@@ -55,6 +55,70 @@ type RawStrategy = {
   };
 };
 
+/** Attempt to parse strategy objects from raw AI text */
+function parseStrategiesFromText(text: string): RawStrategy[] {
+  // Try parsing as a full JSON array first
+  try {
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const arr = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.filter(
+          (o: RawStrategy) => o.name && o.symbol && o.strategyConfig?.entryConditions
+        );
+      }
+    }
+  } catch {
+    // Fall through to partial recovery
+  }
+
+  // Truncated array: try closing the array
+  try {
+    const arrStart = text.indexOf("[");
+    if (arrStart !== -1) {
+      let truncated = text.slice(arrStart).replace(/,\s*$/, "");
+      // Try to close any unclosed braces/brackets
+      const openBraces = (truncated.match(/\{/g) || []).length;
+      const closeBraces = (truncated.match(/\}/g) || []).length;
+      truncated += "}".repeat(Math.max(0, openBraces - closeBraces));
+      const openBrackets = (truncated.match(/\[/g) || []).length;
+      const closeBrackets = (truncated.match(/\]/g) || []).length;
+      truncated += "]".repeat(Math.max(0, openBrackets - closeBrackets));
+      const arr = JSON.parse(truncated);
+      if (Array.isArray(arr) && arr.length > 0) {
+        // Last element may be corrupt from truncation, drop it
+        const valid = arr.slice(0, -1).filter(
+          (o: RawStrategy) => o.name && o.symbol && o.strategyConfig?.entryConditions
+        );
+        if (valid.length > 0) {
+          console.warn(`[Funnel AI] Recovered ${valid.length} strategies from truncated response`);
+          return valid;
+        }
+      }
+    }
+  } catch {
+    // Fall through to individual object extraction
+  }
+
+  // Individual object extraction
+  const results: RawStrategy[] = [];
+  const objectRegex = /\{\s*"name"\s*:\s*"[^"]+?"[\s\S]*?"entryConditions"\s*:\s*\[[\s\S]*?\]\s*(?:,[\s\S]*?)?\}/g;
+  for (const match of text.matchAll(objectRegex)) {
+    try {
+      const obj = JSON.parse(match[0]) as RawStrategy;
+      if (obj.name && obj.symbol && obj.strategyConfig?.entryConditions) {
+        results.push(obj);
+      }
+    } catch {
+      // Skip unparseable objects
+    }
+  }
+  if (results.length > 0) {
+    console.warn(`[Funnel AI] Partial recovery: extracted ${results.length} individual strategies`);
+  }
+  return results;
+}
+
 /**
  * Core AI strategy generation logic — extracted from the route handler
  * so it can be reused by autopilot and the API route.
@@ -181,14 +245,7 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
           } strategies.`
           : "";
 
-        const maxTokens = Math.min(Math.max(count * 150, 2048), 16384);
-        const response = await client.messages.create({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: maxTokens,
-          messages: [
-            {
-              role: "user",
-              content: `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+        const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
@@ -211,7 +268,7 @@ Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":21}}
 
-Respond ONLY with a JSON array. No markdown. Compact JSON.
+Respond ONLY with a JSON array. No markdown fences. No explanation. Compact JSON only.
 Each object:
 {"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
 
@@ -219,12 +276,44 @@ RULES:
 - 1-3 entry conditions, 1-2 exit conditions
 - Vary across coins AND indicator combinations
 - Names under 30 chars, compact JSON
-${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
-            },
-          ],
-        });
+${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
 
-        return response;
+        // Retry up to 2 times on parse failure
+        const MAX_RETRIES = 2;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          const maxTokens = Math.min(Math.max(count * 350, 4096), 16384);
+          const response = await client.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: maxTokens,
+            messages: [{ role: "user", content: prompt }],
+          });
+
+          totalInputTokens += response.usage.input_tokens;
+          totalOutputTokens += response.usage.output_tokens;
+
+          if (response.stop_reason === "max_tokens") {
+            console.warn(`[Funnel AI] Batch ${batchNum} hit max_tokens (attempt ${attempt + 1})`);
+          }
+
+          const text = response.content
+            .filter((b): b is Anthropic.TextBlock => b.type === "text")
+            .map((b) => b.text)
+            .join("")
+            .replace(/```(?:json)?\s*/g, "")
+            .replace(/```\s*/g, "")
+            .trim();
+
+          const parsed = parseStrategiesFromText(text);
+          if (parsed.length > 0) {
+            return parsed;
+          }
+
+          if (attempt < MAX_RETRIES) {
+            console.warn(`[Funnel AI] Batch ${batchNum} parse failed (attempt ${attempt + 1}), retrying...`);
+          }
+        }
+        console.error(`[Funnel AI] Batch ${batchNum} failed after ${MAX_RETRIES + 1} attempts`);
+        return [] as RawStrategy[];
       })
     );
 
@@ -233,34 +322,7 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`,
         console.error("[Funnel AI] Batch failed:", result.reason);
         continue;
       }
-      const response = result.value;
-      totalInputTokens += response.usage.input_tokens;
-      totalOutputTokens += response.usage.output_tokens;
-
-      const text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("");
-
-      try {
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          rawStrategies.push(...JSON.parse(jsonMatch[0]));
-        }
-      } catch {
-        console.warn("[Funnel AI] Full array parse failed, attempting partial recovery");
-        const objectMatches = text.matchAll(/\{[^{}]*"strategyConfig"\s*:\s*\{[^}]*"entryConditions"[\s\S]*?"positionSizePercent"\s*:\s*\d+\s*\}\s*\}/g);
-        for (const match of objectMatches) {
-          try {
-            const obj = JSON.parse(match[0]) as RawStrategy;
-            if (obj.name && obj.symbol && obj.strategyConfig?.entryConditions) {
-              rawStrategies.push(obj);
-            }
-          } catch {
-            // Skip unparseable objects
-          }
-        }
-      }
+      rawStrategies.push(...result.value);
     }
   }
 
