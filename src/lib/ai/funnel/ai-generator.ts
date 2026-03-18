@@ -263,7 +263,14 @@ ${overviewStr}${altDataStr}
 Available symbols: ${symbolsToScan.join(", ")}
 ${riskNote}
 
-Available indicators: rsi, macd, bollinger, ema, sma, stochastic, atr
+Available technical indicators: rsi, macd, bollinger, ema, sma, stochastic, atr
+Available alternative data indicators (these ARE backtestable — historical data is stored):
+- funding_rate: per-symbol funding rate (decimal, e.g. 0.0005 = 0.05%)
+- funding_signal: -2=extreme_short, -1=short_crowded, 0=neutral, 1=long_crowded, 2=extreme_long
+- reddit_sentiment: bullish% minus bearish% (-100 to +100)
+- reddit_buzz: activity score (0-100, >80 = extreme)
+- google_trends: search interest (0-100, >80 = FOMO)
+- whale_flow_signal: exchange net flow direction (-100 to +100, negative=accumulation/bullish)
 Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":21}}
@@ -274,6 +281,7 @@ Each object:
 
 RULES:
 - 1-3 entry conditions, 1-2 exit conditions
+- Include alt data indicators in at least 30% of strategies (e.g. funding_signal, reddit_buzz, whale_flow_signal)
 - Vary across coins AND indicator combinations
 - Names under 30 chars, compact JSON
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
@@ -319,7 +327,13 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
 
     for (const result of batchResults) {
       if (result.status !== "fulfilled") {
-        console.error("[Funnel AI] Batch failed:", result.reason);
+        const err = result.reason;
+        console.error("[Funnel AI] Batch failed:", err);
+        // Surface API-level errors (billing, auth, rate limits) immediately
+        if (err?.status === 400 || err?.status === 401 || err?.status === 429) {
+          const msg = err?.error?.error?.message || err?.message || "API request failed";
+          throw new Error(msg);
+        }
         continue;
       }
       rawStrategies.push(...result.value);
@@ -327,7 +341,7 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
   }
 
   if (rawStrategies.length === 0) {
-    throw new Error("Failed to parse AI response. Try again.");
+    throw new Error("AI generation produced no results. This may be a temporary issue — please try again.");
   }
   console.log(`[Funnel AI] Generated ${rawStrategies.length} of ${aiBaseCount} strategies (${batches.length} batch${batches.length > 1 ? "es" : ""})`);
 
