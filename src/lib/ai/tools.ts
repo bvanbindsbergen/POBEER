@@ -175,4 +175,81 @@ export const aiTools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "get_whale_transactions",
+    description:
+      "Get recent large whale transactions and on-chain exchange flow data. Shows large transfers, exchange inflows/outflows, and whether smart money is accumulating or distributing. Supports optional Whale Alert API key or falls back to Blockchair free API.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        currency: {
+          type: "string",
+          description:
+            "Currency to filter by, e.g. 'btc', 'eth'. Optional, defaults to all.",
+        },
+        min_usd: {
+          type: "number",
+          description:
+            "Minimum transaction value in USD (default 500000)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_google_trends",
+    description:
+      "Get Google Trends search interest data for crypto-related keywords. Measures retail FOMO levels — extreme search interest historically correlates with market tops. Returns interest scores (0-100), trend direction, and FOMO signal levels.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Keywords to check trends for, e.g. ['bitcoin', 'buy crypto', 'altcoins']. Defaults to ['bitcoin', 'crypto', 'buy bitcoin'].",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_funding_rates",
+    description:
+      "Get perpetual futures funding rates and open interest data. Shows leverage bias, crowded positions, and liquidation risk. Positive funding = longs paying shorts (crowded long), negative = shorts paying longs (crowded short). Uses CCXT (Bybit) or Coinglass as fallback.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        symbols: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Trading pairs to check, e.g. ['BTC/USDT', 'ETH/USDT']. Defaults to BTC, ETH, SOL.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_reddit_sentiment",
+    description:
+      "Get Reddit sentiment analysis from crypto subreddits. Analyzes post titles and content for bullish/bearish keywords, calculates sentiment percentages, buzz scores, and highlights top posts. No API key needed.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        subreddits: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Subreddits to analyze, e.g. ['cryptocurrency', 'bitcoin']. Defaults to cryptocurrency, bitcoin, ethtrader.",
+        },
+        currency: {
+          type: "string",
+          description:
+            "Filter posts mentioning a specific currency, e.g. 'BTC', 'ETH'. Optional.",
+        },
+      },
+      required: [],
+    },
+  },
 ];

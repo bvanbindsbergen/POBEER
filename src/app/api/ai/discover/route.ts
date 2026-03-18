@@ -8,6 +8,10 @@ import { fetchMarketOverview } from "@/lib/ai/data/market";
 import { fetchCryptoNews } from "@/lib/ai/data/news";
 import { fetchCandles } from "@/lib/ai/data/candles";
 import { calculateIndicator } from "@/lib/ai/indicators";
+import { fetchDerivativesOverview } from "@/lib/ai/data/funding-rates";
+import { fetchRedditSentiment } from "@/lib/ai/data/reddit-sentiment";
+import { fetchGoogleTrends } from "@/lib/ai/data/google-trends";
+import { fetchWhaleTransactions } from "@/lib/ai/data/whale-alert";
 
 const CACHE_TTL_MINUTES = 60;
 
@@ -32,13 +36,17 @@ export async function GET() {
       return NextResponse.json(JSON.parse(cached[0].data));
     }
 
-    // Gather market context
-    const [overview, news, btcCandles, ethCandles, solCandles] = await Promise.all([
+    // Gather market context + alternative data sources (all in parallel)
+    const [overview, news, btcCandles, ethCandles, solCandles, derivatives, redditData, trendsData, whaleData] = await Promise.all([
       fetchMarketOverview(),
       fetchCryptoNews(undefined, "news"),
       fetchCandles("BTC/USDT", "4h", 14),
       fetchCandles("ETH/USDT", "4h", 14),
       fetchCandles("SOL/USDT", "4h", 14),
+      fetchDerivativesOverview(["BTC/USDT", "ETH/USDT", "SOL/USDT"]).catch(() => null),
+      fetchRedditSentiment(["cryptocurrency", "bitcoin"]).catch(() => null),
+      fetchGoogleTrends(["bitcoin", "crypto"]).catch(() => null),
+      fetchWhaleTransactions("btc").catch(() => null),
     ]);
 
     // Calculate key indicators for top 3 coins
@@ -109,6 +117,38 @@ export async function GET() {
         sentiment: n.sentiment,
         currencies: n.currencies,
       })),
+      ...(derivatives ? {
+        derivatives: {
+          overallLeverage: derivatives.overallLeverage,
+          summary: derivatives.summary,
+          fundingRates: derivatives.fundingRates.map((f) => ({
+            symbol: f.symbol,
+            rate: f.fundingRatePercent,
+            signal: f.signal,
+          })),
+        },
+      } : {}),
+      ...(redditData ? {
+        redditSentiment: {
+          overallSentiment: redditData.overallSentiment,
+          buzzScore: redditData.buzzScore,
+          summary: redditData.summary,
+        },
+      } : {}),
+      ...(trendsData ? {
+        googleTrends: {
+          overallFomoLevel: trendsData.overallFomoLevel,
+          summary: trendsData.summary,
+        },
+      } : {}),
+      ...(whaleData ? {
+        onChainFlows: {
+          flowSignal: whaleData.flowSignal,
+          netFlow: whaleData.netFlow,
+          exchangeInflows: whaleData.exchangeInflows,
+          exchangeOutflows: whaleData.exchangeOutflows,
+        },
+      } : {}),
     }, null, 2);
 
     const response = await client.messages.create({
@@ -118,6 +158,13 @@ export async function GET() {
         {
           role: "user",
           content: `Based on the current market data below, suggest exactly 3 short-term trading strategies. Each strategy should be actionable for the next 1-7 days.
+
+IMPORTANT: Use ALL available data to inform your strategies — not just technicals. Consider:
+- Funding rates & open interest: Crowded longs/shorts suggest mean-reversion opportunities. Extreme funding = liquidation cascade risk.
+- Reddit sentiment & buzz: High retail euphoria often marks local tops. Fear = potential bottoms.
+- Google Trends FOMO level: Extreme search interest historically correlates with tops. Low interest = accumulation zones.
+- On-chain whale flows: Exchange outflows = accumulation (bullish). Exchange inflows = distribution (bearish).
+Factor these into your entry/exit timing, risk levels, and position sizing recommendations.
 ${feedbackStr}${feedbackStr ? "\n\nIMPORTANT: Factor in the user's preference history above. Avoid strategies similar to declined ones (especially when a reason is given). Lean toward patterns and styles the user has approved." : ""}
 
 CURRENT MARKET DATA:

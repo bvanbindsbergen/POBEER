@@ -1,6 +1,10 @@
 import { fetchCandles } from "@/lib/ai/data/candles";
 import { calculateIndicator } from "@/lib/ai/indicators";
 import { fetchMarketOverview } from "@/lib/ai/data/market";
+import { fetchDerivativesOverview } from "@/lib/ai/data/funding-rates";
+import { fetchRedditSentiment } from "@/lib/ai/data/reddit-sentiment";
+import { fetchGoogleTrends } from "@/lib/ai/data/google-trends";
+import { fetchWhaleTransactions } from "@/lib/ai/data/whale-alert";
 import { db } from "@/lib/db";
 import { strategyFeedback } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -105,13 +109,14 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     };
   }
 
-  // Load market overview
-  let overview;
-  try {
-    overview = await fetchMarketOverview();
-  } catch {
-    overview = null;
-  }
+  // Load market overview + alternative data (all in parallel)
+  const [overview, derivatives, redditData, trendsData, whaleData] = await Promise.all([
+    fetchMarketOverview().catch(() => null),
+    fetchDerivativesOverview(symbolsToScan.slice(0, 3)).catch(() => null),
+    fetchRedditSentiment(["cryptocurrency", "bitcoin"]).catch(() => null),
+    fetchGoogleTrends(["bitcoin", "crypto"]).catch(() => null),
+    fetchWhaleTransactions("btc").catch(() => null),
+  ]);
 
   // Load user feedback history
   const recentFeedback = await db
@@ -135,6 +140,13 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
   const overviewStr = overview
     ? `\nMarket overview:\n- Top gainers: ${overview.topGainers.map((c: { symbol: string; priceChangePercent24h: number }) => `${c.symbol} ${c.priceChangePercent24h > 0 ? "+" : ""}${c.priceChangePercent24h.toFixed(1)}%`).join(", ")}\n- Top losers: ${overview.topLosers.map((c: { symbol: string; priceChangePercent24h: number }) => `${c.symbol} ${c.priceChangePercent24h.toFixed(1)}%`).join(", ")}`
     : "";
+
+  const altDataStr = [
+    derivatives ? `\nDERIVATIVES DATA:\n${derivatives.summary}\nFunding rates: ${derivatives.fundingRates.map((f) => `${f.symbol}: ${f.fundingRatePercent} (${f.signal})`).join(", ")}` : "",
+    redditData ? `\nREDDIT SENTIMENT:\n${redditData.summary}` : "",
+    trendsData ? `\nGOOGLE TRENDS (retail FOMO):\n${trendsData.summary}` : "",
+    whaleData ? `\nON-CHAIN WHALE FLOWS:\nSignal: ${whaleData.flowSignal} | Exchange inflows: $${(whaleData.exchangeInflows / 1e6).toFixed(1)}M | Outflows: $${(whaleData.exchangeOutflows / 1e6).toFixed(1)}M | Net: $${(whaleData.netFlow / 1e6).toFixed(1)}M` : "",
+  ].filter(Boolean).join("");
 
   const client = new Anthropic({ apiKey });
 
@@ -177,12 +189,19 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
             {
               role: "user",
               content: `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+
+IMPORTANT: Factor in the alternative data below when designing strategies:
+- If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
+- If Reddit/Google trends show extreme FOMO → favor conservative entries, contrarian setups
+- If whale flows show accumulation (outflows > inflows) → favor long entries on dips
+- If whale flows show distribution (inflows > outflows) → favor quicker exits, tighter TPs
+- Adjust risk parameters (SL/TP) based on leverage crowding and sentiment extremes
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}${diversityHint}
 
 CURRENT MARKET DATA (last 14 days, ${timeframe} timeframe):
 ${JSON.stringify(technicals, null, 2)}
-${overviewStr}
+${overviewStr}${altDataStr}
 
 Available symbols: ${symbolsToScan.join(", ")}
 ${riskNote}

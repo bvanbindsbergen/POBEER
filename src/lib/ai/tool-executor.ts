@@ -1,6 +1,10 @@
 import { fetchCandles } from "./data/candles";
 import { fetchCryptoNews } from "./data/news";
 import { fetchMarketOverview } from "./data/market";
+import { fetchWhaleTransactions } from "./data/whale-alert";
+import { fetchGoogleTrends } from "./data/google-trends";
+import { fetchDerivativesOverview } from "./data/funding-rates";
+import { fetchRedditSentiment } from "./data/reddit-sentiment";
 import { calculateIndicator, type IndicatorName } from "./indicators";
 import { runBacktest } from "./backtest/engine";
 import type { StrategyConfig } from "./backtest/types";
@@ -132,6 +136,36 @@ export async function executeToolCall(
     case "get_market_overview": {
       const overview = await fetchMarketOverview();
       return JSON.stringify(overview);
+    }
+
+    case "get_whale_transactions": {
+      const { currency, min_usd } = toolInput as {
+        currency?: string;
+        min_usd?: number;
+      };
+      const whaleData = await fetchWhaleTransactions(currency, min_usd);
+      return JSON.stringify(whaleData);
+    }
+
+    case "get_google_trends": {
+      const { keywords } = toolInput as { keywords?: string[] };
+      const trends = await fetchGoogleTrends(keywords);
+      return JSON.stringify(trends);
+    }
+
+    case "get_funding_rates": {
+      const { symbols } = toolInput as { symbols?: string[] };
+      const derivatives = await fetchDerivativesOverview(symbols);
+      return JSON.stringify(derivatives);
+    }
+
+    case "get_reddit_sentiment": {
+      const { subreddits, currency } = toolInput as {
+        subreddits?: string[];
+        currency?: string;
+      };
+      const reddit = await fetchRedditSentiment(subreddits, currency);
+      return JSON.stringify(reddit);
     }
 
     default:
