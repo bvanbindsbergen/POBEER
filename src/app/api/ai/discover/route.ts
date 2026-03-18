@@ -38,11 +38,11 @@ export async function GET() {
 
     // Gather market context + alternative data sources (all in parallel)
     const [overview, news, btcCandles, ethCandles, solCandles, derivatives, redditData, trendsData, whaleData] = await Promise.all([
-      fetchMarketOverview(),
-      fetchCryptoNews(undefined, "news"),
-      fetchCandles("BTC/USDT", "4h", 14),
-      fetchCandles("ETH/USDT", "4h", 14),
-      fetchCandles("SOL/USDT", "4h", 14),
+      fetchMarketOverview().catch(() => ({ trending: [], topGainers: [], topLosers: [] })),
+      fetchCryptoNews(undefined, "news").catch(() => []),
+      fetchCandles("BTC/USDT", "4h", 14).catch(() => []),
+      fetchCandles("ETH/USDT", "4h", 14).catch(() => []),
+      fetchCandles("SOL/USDT", "4h", 14).catch(() => []),
       fetchDerivativesOverview(["BTC/USDT", "ETH/USDT", "SOL/USDT"]).catch(() => null),
       fetchRedditSentiment(["cryptocurrency", "bitcoin"]).catch(() => null),
       fetchGoogleTrends(["bitcoin", "crypto"]).catch(() => null),
@@ -182,7 +182,7 @@ Respond ONLY with a JSON array of exactly 3 strategy objects. No markdown, no ex
   "stopLoss": "X%",
   "takeProfit": "X%",
   "strategyConfig": {
-    "entryConditions": [{"indicator": "rsi|macd|bollinger|ema|sma|stochastic", "operator": ">|<|>=|<=|crosses_above|crosses_below", "value": number, "params": {"period": number}, "field": "optional for macd/stochastic/bollinger"}],
+    "entryConditions": [{"indicator": "rsi|macd|bollinger|ema|sma|stochastic|funding_rate|funding_signal|reddit_sentiment|reddit_buzz|google_trends|whale_flow_signal", "operator": ">|<|>=|<=|crosses_above|crosses_below", "value": number, "params": {"period": number}, "field": "optional for macd/stochastic/bollinger"}],
     "exitConditions": [{"indicator": "...", "operator": "...", "value": number}],
     "stopLossPercent": number,
     "takeProfitPercent": number,
@@ -198,7 +198,10 @@ Respond ONLY with a JSON array of exactly 3 strategy objects. No markdown, no ex
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
-      .join("");
+      .join("")
+      .replace(/```(?:json)?\s*/g, "")
+      .replace(/```\s*/g, "")
+      .trim();
 
     try {
       // Extract JSON array from response
@@ -207,7 +210,7 @@ Respond ONLY with a JSON array of exactly 3 strategy objects. No markdown, no ex
         strategies = JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
-      console.error("Failed to parse discover response:", e, text);
+      console.error("Failed to parse discover response:", e, text.slice(0, 500));
     }
 
     const result = {
