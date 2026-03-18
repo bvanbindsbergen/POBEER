@@ -27,11 +27,12 @@ export async function POST(req: NextRequest) {
 
     // Run walk-forward
     const config: StrategyConfig = strategyConfig;
-    const result = runWalkForward(
+    const result = await runWalkForward(
       candles,
       config,
       windowCount || 5,
-      inSampleRatio || 0.7
+      inSampleRatio || 0.7,
+      symbol
     );
 
     return NextResponse.json({ result });

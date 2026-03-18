@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       for (const strategy of symbolStrategies) {
         totalTested++;
         try {
-          const result = runBacktest(candles, strategy.strategyConfig);
+          const result = await runBacktest(candles, strategy.strategyConfig, symbol);
 
           // totalPnl from engine is absolute dollars on $10k equity — convert to %
           const INITIAL_EQUITY = 10000;

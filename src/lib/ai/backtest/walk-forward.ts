@@ -2,12 +2,13 @@ import type { Candle } from "../data/candles";
 import type { StrategyConfig, WalkForwardResult, WalkForwardWindow } from "./types";
 import { runBacktest } from "./engine";
 
-export function runWalkForward(
+export async function runWalkForward(
   candles: Candle[],
   config: StrategyConfig,
   windowCount: number = 5,
-  inSampleRatio: number = 0.7
-): WalkForwardResult {
+  inSampleRatio: number = 0.7,
+  symbol?: string
+): Promise<WalkForwardResult> {
   const totalCandles = candles.length;
   const windowSize = Math.floor(totalCandles / windowCount);
 
@@ -36,8 +37,8 @@ export function runWalkForward(
 
     if (inSampleCandles.length < 10 || outOfSampleCandles.length < 5) continue;
 
-    const inSampleResult = runBacktest(inSampleCandles, config);
-    const outOfSampleResult = runBacktest(outOfSampleCandles, config);
+    const inSampleResult = await runBacktest(inSampleCandles, config, symbol);
+    const outOfSampleResult = await runBacktest(outOfSampleCandles, config, symbol);
 
     windows.push({
       windowIndex: i,

@@ -1,4 +1,5 @@
 import { calculateIndicator, type IndicatorName } from "../indicators";
+import { isAltIndicator, loadAltDataForCandles, type AltIndicatorName } from "../alt-data-indicators";
 import type { Candle } from "../data/candles";
 import type { Condition } from "./types";
 
@@ -11,6 +12,9 @@ export function cacheIndicator(
 ) {
   const key = `${indicator}:${JSON.stringify(params || {})}:${field || ""}`;
   if (cache.has(key)) return;
+
+  // Alt data indicators are loaded from DB via cacheAltIndicators — skip here
+  if (isAltIndicator(indicator)) return;
 
   const result = calculateIndicator(indicator, candles, params);
   const values = result.values.map((v) => {
@@ -25,6 +29,40 @@ export function cacheIndicator(
     return undefined;
   });
   cache.set(key, values);
+}
+
+/**
+ * Pre-loads all alternative data indicators referenced in conditions from the database.
+ * Must be called before running the backtest when strategies use alt data conditions.
+ */
+export async function cacheAltIndicators(
+  cache: Map<string, (number | undefined)[]>,
+  conditions: Condition[],
+  candles: Candle[],
+  symbol: string
+): Promise<void> {
+  const altIndicators = new Set<AltIndicatorName>();
+
+  for (const cond of conditions) {
+    if (isAltIndicator(cond.indicator)) {
+      altIndicators.add(cond.indicator);
+    }
+    if (typeof cond.value === "object" && isAltIndicator(cond.value.indicator as string)) {
+      altIndicators.add(cond.value.indicator as AltIndicatorName);
+    }
+  }
+
+  if (altIndicators.size === 0) return;
+
+  const loadPromises = [...altIndicators].map(async (indicator) => {
+    const key = `${indicator}:{}:`;
+    if (cache.has(key)) return;
+
+    const values = await loadAltDataForCandles(indicator, candles, symbol);
+    cache.set(key, values);
+  });
+
+  await Promise.all(loadPromises);
 }
 
 export function getIndicatorValue(

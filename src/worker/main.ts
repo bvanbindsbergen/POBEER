@@ -14,6 +14,7 @@ import { TransferTracker } from "./transfer-tracker";
 import { PendingTradeExpirer } from "./pending-trade-expirer";
 import { StrategyExecutor } from "./strategy-executor";
 import { GridExecutor } from "./grid-executor";
+import { AltDataCollector } from "./alt-data-collector";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
 const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
@@ -31,6 +32,7 @@ class Worker {
   private pendingTradeExpirer: PendingTradeExpirer;
   private strategyExecutor: StrategyExecutor;
   private gridExecutor: GridExecutor;
+  private altDataCollector: AltDataCollector;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private expirerTimer: NodeJS.Timeout | null = null;
@@ -55,6 +57,7 @@ class Worker {
     this.pendingTradeExpirer = new PendingTradeExpirer();
     this.strategyExecutor = new StrategyExecutor();
     this.gridExecutor = new GridExecutor();
+    this.altDataCollector = new AltDataCollector();
   }
 
   async start() {
@@ -165,6 +168,15 @@ class Worker {
         }
       } catch (err) {
         console.error("[Worker] Invoice generation job error:", err);
+      }
+
+      try {
+        if (await this.altDataCollector.shouldRun()) {
+          console.log("[Worker] Collecting alternative data (funding, sentiment, trends, whale flows)...");
+          await this.altDataCollector.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Alt data collection job error:", err);
       }
     };
 

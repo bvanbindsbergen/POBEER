@@ -9,6 +9,8 @@ import {
 } from "technicalindicators";
 import type { Candle } from "./data/candles";
 
+import type { AltIndicatorName } from "./alt-data-indicators";
+
 export type IndicatorName =
   | "rsi"
   | "macd"
@@ -17,7 +19,8 @@ export type IndicatorName =
   | "sma"
   | "atr"
   | "stochastic"
-  | "volume_sma";
+  | "volume_sma"
+  | AltIndicatorName;
 
 export interface IndicatorParams {
   period?: number;
@@ -33,7 +36,11 @@ export interface IndicatorResult {
   timestamps: number[];
 }
 
-const DEFAULT_PARAMS: Record<IndicatorName, IndicatorParams> = {
+/** Technical indicator types that can be computed from candles */
+export type TechnicalIndicatorName =
+  | "rsi" | "macd" | "bollinger" | "ema" | "sma" | "atr" | "stochastic" | "volume_sma";
+
+const DEFAULT_PARAMS: Record<TechnicalIndicatorName, IndicatorParams> = {
   rsi: { period: 14 },
   macd: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 },
   bollinger: { period: 20, stdDev: 2 },
@@ -44,11 +51,24 @@ const DEFAULT_PARAMS: Record<IndicatorName, IndicatorParams> = {
   volume_sma: { period: 20 },
 };
 
+export function isTechnicalIndicator(name: string): name is TechnicalIndicatorName {
+  return name in DEFAULT_PARAMS;
+}
+
 export function calculateIndicator(
   name: IndicatorName,
   candles: Candle[],
   params?: IndicatorParams
 ): IndicatorResult {
+  // Alt data indicators are not computed from candles — they're loaded from DB
+  if (!isTechnicalIndicator(name)) {
+    return {
+      name: name,
+      values: candles.map(() => undefined),
+      timestamps: candles.map((c) => c.timestamp),
+    };
+  }
+
   const p = { ...DEFAULT_PARAMS[name], ...params };
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);

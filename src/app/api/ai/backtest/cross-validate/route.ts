@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const rangeCandles = candleResult.value;
-        const result = runBacktest(rangeCandles, strategyConfig);
+        const result = await runBacktest(rangeCandles, strategyConfig, symbol);
         const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
 
         results.push({

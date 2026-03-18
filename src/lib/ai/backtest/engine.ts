@@ -1,14 +1,20 @@
 import type { Candle } from "../data/candles";
 import type { StrategyConfig, Trade, EquityPoint, BacktestResult } from "./types";
 import { calculateMetrics } from "./metrics";
-import { cacheIndicator, checkConditions } from "./conditions";
+import { cacheIndicator, cacheAltIndicators, checkConditions } from "./conditions";
 
 const INITIAL_EQUITY = 10000;
 
-export function runBacktest(
+/**
+ * Run a backtest. Accepts an optional symbol parameter for loading per-symbol alt data.
+ * If any strategy conditions reference alternative data indicators (funding_rate, reddit, etc.),
+ * the engine loads historical values from the database and aligns them to candle timestamps.
+ */
+export async function runBacktest(
   candles: Candle[],
-  config: StrategyConfig
-): BacktestResult {
+  config: StrategyConfig,
+  symbol?: string
+): Promise<BacktestResult> {
   if (candles.length < 2) {
     return {
       ...calculateMetrics([], []),
@@ -27,6 +33,9 @@ export function runBacktest(
       cacheIndicator(indicatorCache, cond.value.indicator, cond.value.params, cond.value.field, candles);
     }
   }
+
+  // Load alternative data indicators from DB (if any conditions reference them)
+  await cacheAltIndicators(indicatorCache, allConditions, candles, symbol || "BTC/USDT");
 
   // Replay candles
   let equity = INITIAL_EQUITY;

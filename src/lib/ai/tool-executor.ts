@@ -93,7 +93,7 @@ export async function executeToolCall(
         (c) => c.timestamp >= start.getTime() && c.timestamp <= end.getTime()
       );
 
-      const result = runBacktest(filtered, strategy);
+      const result = await runBacktest(filtered, strategy, symbol);
 
       // Store in database
       const [record] = await db

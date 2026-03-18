@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
       // Run backtest
       const config: StrategyConfig = strategyConfig;
-      const result = runBacktest(filtered, config);
+      const result = await runBacktest(filtered, config, symbol);
 
       // Update record with results
       const [updated] = await db

@@ -561,7 +561,30 @@ export const gridOrders = pgTable("grid_orders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Alternative Data Snapshots (historical time-series for backtesting)
+export const altDataSnapshots = pgTable(
+  "alt_data_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: varchar("source", { length: 30 }).notNull(), // funding_rate, reddit, google_trends, whale_flow
+    symbol: varchar("symbol", { length: 20 }), // BTC/USDT for per-symbol data, null for aggregate
+    field: varchar("field", { length: 30 }).notNull(), // rate, buzz, bullish_pct, interest, net_flow, etc.
+    timestamp: timestamp("timestamp").notNull(),
+    value: real("value").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("alt_data_source_symbol_field_ts_idx").on(
+      table.source,
+      table.symbol,
+      table.field,
+      table.timestamp
+    ),
+  ]
+);
+
 // Type exports
+export type AltDataSnapshot = typeof altDataSnapshots.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type LeaderTrade = typeof leaderTrades.$inferSelect;

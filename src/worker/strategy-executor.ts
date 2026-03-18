@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { decrypt } from "../lib/crypto";
 import { createExchange, fetchUsdtBalance, placeMarketOrder } from "../lib/exchange/client";
 import { fetchCandles } from "../lib/ai/data/candles";
-import { cacheIndicator, checkConditions } from "../lib/ai/backtest/conditions";
+import { cacheIndicator, cacheAltIndicators, checkConditions } from "../lib/ai/backtest/conditions";
 import type { StrategyConfig } from "../lib/ai/backtest/types";
 import { createNotification } from "../lib/notifications";
 import { simulateMarketOrder } from "./paper-simulator";
@@ -114,6 +114,9 @@ export class StrategyExecutor {
         cacheIndicator(indicatorCache, cond.value.indicator, cond.value.params, cond.value.field, candles);
       }
     }
+
+    // Load alternative data indicators from DB (funding rates, sentiment, etc.)
+    await cacheAltIndicators(indicatorCache, allConditions, candles, strategy.symbol);
 
     const lastIndex = candles.length - 1;
     const lastPrice = candles[lastIndex].close;

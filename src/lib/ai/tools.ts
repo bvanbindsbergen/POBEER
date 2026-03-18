@@ -61,6 +61,12 @@ export const aiTools: Anthropic.Tool[] = [
                   "atr",
                   "stochastic",
                   "volume_sma",
+                  "funding_rate",
+                  "funding_signal",
+                  "reddit_sentiment",
+                  "reddit_buzz",
+                  "google_trends",
+                  "whale_flow_signal",
                 ],
               },
               params: {
@@ -129,7 +135,10 @@ export const aiTools: Anthropic.Tool[] = [
               items: {
                 type: "object",
                 properties: {
-                  indicator: { type: "string" },
+                  indicator: {
+                    type: "string",
+                    description: "Technical: rsi, macd, bollinger, ema, sma, atr, stochastic, volume_sma. Alternative data: funding_rate (per-symbol rate), funding_signal (-2 to 2), reddit_sentiment (-100 to 100), reddit_buzz (0-100), google_trends (0-100), whale_flow_signal (-100 to 100, negative=accumulation)",
+                  },
                   params: { type: "object" },
                   field: { type: "string" },
                   operator: {
@@ -146,7 +155,10 @@ export const aiTools: Anthropic.Tool[] = [
               items: {
                 type: "object",
                 properties: {
-                  indicator: { type: "string" },
+                  indicator: {
+                    type: "string",
+                    description: "Same indicators as entry conditions",
+                  },
                   params: { type: "object" },
                   field: { type: "string" },
                   operator: { type: "string" },

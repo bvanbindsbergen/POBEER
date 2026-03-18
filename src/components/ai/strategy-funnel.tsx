@@ -945,11 +945,16 @@ export function StrategyFunnel({
               className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white"
             >
               {aiGenerateMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating... ({Math.ceil(aiBaseCount / 30)} batches, ~{Math.ceil(aiBaseCount / 30) * 15}s)
+                </>
               ) : (
-                <Brain className="w-4 h-4 mr-2" />
+                <>
+                  <Brain className="w-4 h-4 mr-2" />
+                  Generate {aiExpand ? aiTargetTotal : aiBaseCount} AI Strategies
+                </>
               )}
-              Generate {aiExpand ? aiTargetTotal : aiBaseCount} AI Strategies
             </Button>
           )}
 

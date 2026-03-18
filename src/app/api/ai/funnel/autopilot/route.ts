@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
             for (const strategy of symbolStrategies) {
               tested++;
               try {
-                const result = runBacktest(candles, strategy.strategyConfig);
+                const result = await runBacktest(candles, strategy.strategyConfig, symbol);
                 const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
 
                 if (totalReturnPct >= minProfitPercent) {
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
                 }
 
                 try {
-                  const result = runBacktest(candles, strategy.strategyConfig);
+                  const result = await runBacktest(candles, strategy.strategyConfig, sym);
                   const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
                   cvResults.push({
                     symbol: sym,

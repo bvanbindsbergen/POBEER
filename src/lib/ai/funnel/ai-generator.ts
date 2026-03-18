@@ -228,24 +228,34 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     remaining -= chunk;
   }
 
-  // Run batches in parallel (max 5 concurrent)
-  const MAX_CONCURRENT = 5;
+  // Run batches sequentially with rate-limit spacing (5 RPM on free tier)
+  const RATE_LIMIT_DELAY_MS = 13_000;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let rawStrategies: RawStrategy[] = [];
+  let lastRequestTime = 0;
 
-  for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
-    const batchSlice = batches.slice(i, i + MAX_CONCURRENT);
-    const batchResults = await Promise.allSettled(
-      batchSlice.map(async (count, batchIdx) => {
-        const batchNum = i + batchIdx + 1;
-        const diversityHint = batches.length > 1
-          ? `\nThis is batch ${batchNum} of ${batches.length}. Generate DIFFERENT strategies than typical — vary indicators, params, and coins. Batch ${batchNum} focus: ${
-            ["momentum & trend", "mean-reversion & oscillators", "volatility & breakout", "divergence & multi-indicator", "cross-asset & unconventional"][batchIdx % 5]
-          } strategies.`
-          : "";
+  for (let i = 0; i < batches.length; i++) {
+    const count = batches[i];
+    const batchNum = i + 1;
 
-        const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    // Rate-limit: wait between requests
+    if (lastRequestTime > 0) {
+      const elapsed = Date.now() - lastRequestTime;
+      const waitMs = RATE_LIMIT_DELAY_MS - elapsed;
+      if (waitMs > 0) {
+        console.log(`[Funnel AI] Rate-limit pause: ${(waitMs / 1000).toFixed(1)}s before batch ${batchNum}/${batches.length}`);
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+
+    const diversityHint = batches.length > 1
+      ? `\nThis is batch ${batchNum} of ${batches.length}. Generate DIFFERENT strategies than typical — vary indicators, params, and coins. Batch ${batchNum} focus: ${
+          ["momentum & trend", "mean-reversion & oscillators", "volatility & breakout", "divergence & multi-indicator", "cross-asset & unconventional"][(batchNum - 1) % 5]
+        } strategies.`
+      : "";
+
+    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
@@ -286,57 +296,71 @@ RULES:
 - Names under 30 chars, compact JSON
 ${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
 
-        // Retry up to 2 times on parse failure
-        const MAX_RETRIES = 2;
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          const maxTokens = Math.min(Math.max(count * 350, 4096), 16384);
-          const response = await client.messages.create({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: maxTokens,
-            messages: [{ role: "user", content: prompt }],
-          });
+    // Retry up to 2 times on parse failure, with rate-limit backoff on 429
+    const MAX_RETRIES = 2;
+    let batchParsed = false;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        lastRequestTime = Date.now();
+        const maxTokens = Math.min(Math.max(count * 350, 4096), 16384);
+        const response = await client.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: prompt }],
+        });
 
-          totalInputTokens += response.usage.input_tokens;
-          totalOutputTokens += response.usage.output_tokens;
+        totalInputTokens += response.usage.input_tokens;
+        totalOutputTokens += response.usage.output_tokens;
 
-          if (response.stop_reason === "max_tokens") {
-            console.warn(`[Funnel AI] Batch ${batchNum} hit max_tokens (attempt ${attempt + 1})`);
-          }
-
-          const text = response.content
-            .filter((b): b is Anthropic.TextBlock => b.type === "text")
-            .map((b) => b.text)
-            .join("")
-            .replace(/```(?:json)?\s*/g, "")
-            .replace(/```\s*/g, "")
-            .trim();
-
-          const parsed = parseStrategiesFromText(text);
-          if (parsed.length > 0) {
-            return parsed;
-          }
-
-          if (attempt < MAX_RETRIES) {
-            console.warn(`[Funnel AI] Batch ${batchNum} parse failed (attempt ${attempt + 1}), retrying...`);
-          }
+        if (response.stop_reason === "max_tokens") {
+          console.warn(`[Funnel AI] Batch ${batchNum} hit max_tokens (attempt ${attempt + 1})`);
         }
-        console.error(`[Funnel AI] Batch ${batchNum} failed after ${MAX_RETRIES + 1} attempts`);
-        return [] as RawStrategy[];
-      })
-    );
 
-    for (const result of batchResults) {
-      if (result.status !== "fulfilled") {
-        const err = result.reason;
-        console.error("[Funnel AI] Batch failed:", err);
-        // Surface API-level errors (billing, auth, rate limits) immediately
-        if (err?.status === 400 || err?.status === 401 || err?.status === 429) {
-          const msg = err?.error?.error?.message || err?.message || "API request failed";
+        const text = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("")
+          .replace(/```(?:json)?\s*/g, "")
+          .replace(/```\s*/g, "")
+          .trim();
+
+        const parsed = parseStrategiesFromText(text);
+        if (parsed.length > 0) {
+          rawStrategies.push(...parsed);
+          console.log(`[Funnel AI] Batch ${batchNum}/${batches.length}: ${parsed.length} strategies`);
+          batchParsed = true;
+          break;
+        }
+
+        if (attempt < MAX_RETRIES) {
+          console.warn(`[Funnel AI] Batch ${batchNum} parse failed (attempt ${attempt + 1}), retrying after delay...`);
+          await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
+        }
+      } catch (err: unknown) {
+        const apiErr = err as { status?: number; error?: { error?: { message?: string } }; message?: string };
+        console.error(`[Funnel AI] Batch ${batchNum} error:`, apiErr.message || err);
+
+        // Surface billing/auth errors immediately — no point retrying
+        if (apiErr.status === 400 || apiErr.status === 401) {
+          const msg = apiErr.error?.error?.message || apiErr.message || "API request failed";
           throw new Error(msg);
         }
-        continue;
+
+        // Rate-limited: wait longer and retry
+        if (apiErr.status === 429) {
+          if (attempt < MAX_RETRIES) {
+            const backoffMs = RATE_LIMIT_DELAY_MS * (attempt + 2);
+            console.warn(`[Funnel AI] Rate-limited, waiting ${(backoffMs / 1000).toFixed(0)}s...`);
+            await new Promise((r) => setTimeout(r, backoffMs));
+            continue;
+          }
+        }
+
+        if (attempt >= MAX_RETRIES) break;
       }
-      rawStrategies.push(...result.value);
+    }
+    if (!batchParsed) {
+      console.error(`[Funnel AI] Batch ${batchNum} failed after ${MAX_RETRIES + 1} attempts`);
     }
   }
 
