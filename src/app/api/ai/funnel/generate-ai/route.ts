@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { generateAiStrategies } from "@/lib/ai/funnel/ai-generator";
+import { generateAiStrategiesStream } from "@/lib/ai/funnel/ai-generator";
 
 // Allow up to 5 minutes for large batch generation
 export const maxDuration = 300;
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const slRange: number[] = body.slRange || [2, 3, 5, 8];
     const tpRange: number[] = body.tpRange || [3, 5, 8, 12, 15];
 
-    const result = await generateAiStrategies({
+    const stream = generateAiStrategiesStream({
       count: aiBaseCount,
       targetTotal,
       prompt: userPrompt,
@@ -33,7 +33,31 @@ export async function POST(req: NextRequest) {
       userId: auth.user.id,
     });
 
-    return NextResponse.json(result);
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of stream) {
+            const data = `data: ${JSON.stringify(event)}\n\n`;
+            controller.enqueue(encoder.encode(data));
+          }
+          controller.close();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          const errorEvent = `data: ${JSON.stringify({ type: "error", message: msg })}\n\n`;
+          controller.enqueue(encoder.encode(errorEvent));
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

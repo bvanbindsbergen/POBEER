@@ -143,6 +143,9 @@ export function StrategyFunnel({
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiNoRiskManagement, setAiNoRiskManagement] = useState(false);
   const [aiCost, setAiCost] = useState<{ inputTokens: number; outputTokens: number; estimatedCost: number } | null>(null);
+  const [aiStreaming, setAiStreaming] = useState(false);
+  const [aiStreamProgress, setAiStreamProgress] = useState<{ batchNum: number; totalBatches: number; message: string } | null>(null);
+  const [aiStreamError, setAiStreamError] = useState<string | null>(null);
 
   const positionSizePercent = 10;
 
@@ -366,9 +369,16 @@ export function StrategyFunnel({
     },
   });
 
-  // AI generate mutation
-  const aiGenerateMutation = useMutation({
-    mutationFn: async () => {
+  // AI generate — streaming via SSE
+  const startAiGenerate = useCallback(async () => {
+    setAiStreaming(true);
+    setAiStreamError(null);
+    setAiStreamProgress(null);
+    setGenerated([]);
+    setSelected(new Set());
+    setAiCost(null);
+
+    try {
       const res = await fetch("/api/ai/funnel/generate-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -382,19 +392,67 @@ export function StrategyFunnel({
           ...(aiExpand ? { slRange: SL_PRESETS[slPreset], tpRange: TP_PRESETS[tpPreset] } : {}),
         }),
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "AI generation failed");
       }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setGenerated(data.strategies);
-      setSelected(new Set(data.strategies.map((s: GeneratedStrategy) => s.id)));
-      setAiCost(data.tokenUsage || null);
-      setStage(2);
-    },
-  });
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response stream");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let allStrategies: GeneratedStrategy[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const dataMatch = line.match(/^data:\s*([\s\S]*)/);
+          if (!dataMatch) continue;
+
+          try {
+            const event = JSON.parse(dataMatch[1]);
+
+            if (event.type === "progress") {
+              allStrategies = [...allStrategies, ...event.strategies];
+              setGenerated(allStrategies);
+              setSelected(new Set(allStrategies.map((s: GeneratedStrategy) => s.id)));
+              setAiStreamProgress({
+                batchNum: event.batchNum,
+                totalBatches: event.totalBatches,
+                message: event.message,
+              });
+            } else if (event.type === "done") {
+              setAiCost(event.tokenUsage || null);
+              setStage(2);
+            } else if (event.type === "error") {
+              throw new Error(event.message);
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
+        }
+      }
+
+      // If we got strategies but no explicit "done" (edge case), still move to stage 2
+      if (allStrategies.length > 0) {
+        setStage(2);
+      }
+    } catch (err) {
+      setAiStreamError(err instanceof Error ? err.message : "AI generation failed");
+    } finally {
+      setAiStreaming(false);
+      setAiStreamProgress(null);
+    }
+  }, [aiBaseCount, aiExpand, aiTargetTotal, aiPrompt, timeframe, positionSizePercent, aiNoRiskManagement, slPreset, tpPreset]);
 
   // Backtest mutation
   const backtestMutation = useMutation({
@@ -940,14 +998,16 @@ export function StrategyFunnel({
             </Button>
           ) : (
             <Button
-              onClick={() => aiGenerateMutation.mutate()}
-              disabled={aiGenerateMutation.isPending}
+              onClick={startAiGenerate}
+              disabled={aiStreaming}
               className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white"
             >
-              {aiGenerateMutation.isPending ? (
+              {aiStreaming ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating... ({Math.ceil(aiBaseCount / 30)} batches, ~{Math.ceil(Math.ceil(aiBaseCount / 30) * 25 / 60)}min)
+                  {aiStreamProgress
+                    ? `Batch ${aiStreamProgress.batchNum}/${aiStreamProgress.totalBatches} — ${generated.length} strategies`
+                    : "Connecting..."}
                 </>
               ) : (
                 <>
@@ -956,6 +1016,25 @@ export function StrategyFunnel({
                 </>
               )}
             </Button>
+          )}
+
+          {/* AI Streaming progress */}
+          {aiStreaming && aiStreamProgress && (
+            <div className="rounded-lg bg-violet-500/5 border border-violet-500/10 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-violet-300">{aiStreamProgress.message}</span>
+                <span className="text-slate-500">{generated.length} total</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-violet-500 rounded-full transition-all duration-500"
+                  style={{ width: `${(aiStreamProgress.batchNum / aiStreamProgress.totalBatches) * 100}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Rate-limited to respect API limits. ~{Math.ceil((aiStreamProgress.totalBatches - aiStreamProgress.batchNum) * 25)}s remaining
+              </p>
+            </div>
           )}
 
           {/* Auto-Pilot progress */}
@@ -993,9 +1072,9 @@ export function StrategyFunnel({
               Failed to generate strategies. {(generateMutation.error as Error)?.message}
             </p>
           )}
-          {aiGenerateMutation.isError && (
+          {aiStreamError && (
             <p className="text-xs text-red-400">
-              AI generation failed. {(aiGenerateMutation.error as Error)?.message}
+              AI generation failed. {aiStreamError}
             </p>
           )}
         </div>
