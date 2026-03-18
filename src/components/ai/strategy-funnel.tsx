@@ -947,7 +947,7 @@ export function StrategyFunnel({
               {aiGenerateMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating... ({Math.ceil(aiBaseCount / 30)} batches, ~{Math.ceil(aiBaseCount / 30) * 15}s)
+                  Generating... ({Math.ceil(aiBaseCount / 30)} batches, ~{Math.ceil(Math.ceil(aiBaseCount / 30) * 25 / 60)}min)
                 </>
               ) : (
                 <>

@@ -228,8 +228,8 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     remaining -= chunk;
   }
 
-  // Run batches sequentially with rate-limit spacing (5 RPM on free tier)
-  const RATE_LIMIT_DELAY_MS = 13_000;
+  // Run batches sequentially with safe margin (5 RPM limit → 20s between requests)
+  const RATE_LIMIT_DELAY_MS = 20_000;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let rawStrategies: RawStrategy[] = [];
