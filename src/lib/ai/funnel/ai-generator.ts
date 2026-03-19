@@ -5,6 +5,7 @@ import { fetchDerivativesOverview } from "@/lib/ai/data/funding-rates";
 import { fetchRedditSentiment } from "@/lib/ai/data/reddit-sentiment";
 import { fetchGoogleTrends } from "@/lib/ai/data/google-trends";
 import { fetchWhaleTransactions } from "@/lib/ai/data/whale-alert";
+import { fetchCrucixIntelligence } from "@/lib/ai/data/crucix";
 import { db } from "@/lib/db";
 import { strategyFeedback } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -173,13 +174,14 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     };
   }
 
-  // Load market overview + alternative data (all in parallel)
-  const [overview, derivatives, redditData, trendsData, whaleData] = await Promise.all([
+  // Load market overview + alternative data + Crucix intelligence (all in parallel)
+  const [overview, derivatives, redditData, trendsData, whaleData, crucixData] = await Promise.all([
     fetchMarketOverview().catch(() => null),
     fetchDerivativesOverview(symbolsToScan.slice(0, 3)).catch(() => null),
     fetchRedditSentiment(["cryptocurrency", "bitcoin"]).catch(() => null),
     fetchGoogleTrends(["bitcoin", "crypto"]).catch(() => null),
     fetchWhaleTransactions("btc").catch(() => null),
+    fetchCrucixIntelligence().catch(() => null),
   ]);
 
   // Load user feedback history
@@ -210,6 +212,12 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     redditData ? `\nREDDIT SENTIMENT:\n${redditData.summary}` : "",
     trendsData ? `\nGOOGLE TRENDS (retail FOMO):\n${trendsData.summary}` : "",
     whaleData ? `\nON-CHAIN WHALE FLOWS:\nSignal: ${whaleData.flowSignal} | Exchange inflows: $${(whaleData.exchangeInflows / 1e6).toFixed(1)}M | Outflows: $${(whaleData.exchangeOutflows / 1e6).toFixed(1)}M | Net: $${(whaleData.netFlow / 1e6).toFixed(1)}M` : "",
+    crucixData?.available ? `\nGLOBAL INTELLIGENCE (Crucix OSINT — 27 sources):
+${crucixData.macro.vix ? `VIX: ${crucixData.macro.vix.price} (${crucixData.macro.vix.change > 0 ? "+" : ""}${crucixData.macro.vix.change.toFixed(1)})` : ""}${crucixData.macro.sp500 ? ` | S&P500: ${crucixData.macro.sp500.changePct > 0 ? "+" : ""}${crucixData.macro.sp500.changePct.toFixed(1)}%` : ""}${crucixData.macro.gold ? ` | Gold: ${crucixData.macro.gold.changePct > 0 ? "+" : ""}${crucixData.macro.gold.changePct.toFixed(1)}%` : ""}${crucixData.macro.oil ? ` | Oil: $${crucixData.macro.oil.price.toFixed(1)}` : ""}
+Geopolitical risk: ${crucixData.conflicts.summary}
+News sentiment: ${crucixData.news.sentiment} (${crucixData.news.conflictNews} conflict, ${crucixData.news.economyNews} economy articles)
+Top headlines: ${crucixData.news.topHeadlines.slice(0, 5).join(" | ")}
+${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.social.wallstreetbetsBuzz.slice(0, 3).join(" | ")}` : ""}` : "",
   ].filter(Boolean).join("");
 
   const client = new Anthropic({ apiKey });
@@ -507,12 +515,13 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
     };
   }
 
-  const [overview, derivatives, redditData, trendsData, whaleData] = await Promise.all([
+  const [overview, derivatives, redditData, trendsData, whaleData, crucixData] = await Promise.all([
     fetchMarketOverview().catch(() => null),
     fetchDerivativesOverview(symbolsToScan.slice(0, 3)).catch(() => null),
     fetchRedditSentiment(["cryptocurrency", "bitcoin"]).catch(() => null),
     fetchGoogleTrends(["bitcoin", "crypto"]).catch(() => null),
     fetchWhaleTransactions("btc").catch(() => null),
+    fetchCrucixIntelligence().catch(() => null),
   ]);
 
   const recentFeedback = await db
@@ -542,6 +551,12 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
     redditData ? `\nREDDIT SENTIMENT:\n${redditData.summary}` : "",
     trendsData ? `\nGOOGLE TRENDS (retail FOMO):\n${trendsData.summary}` : "",
     whaleData ? `\nON-CHAIN WHALE FLOWS:\nSignal: ${whaleData.flowSignal} | Exchange inflows: $${(whaleData.exchangeInflows / 1e6).toFixed(1)}M | Outflows: $${(whaleData.exchangeOutflows / 1e6).toFixed(1)}M | Net: $${(whaleData.netFlow / 1e6).toFixed(1)}M` : "",
+    crucixData?.available ? `\nGLOBAL INTELLIGENCE (Crucix OSINT — 27 sources):
+${crucixData.macro.vix ? `VIX: ${crucixData.macro.vix.price} (${crucixData.macro.vix.change > 0 ? "+" : ""}${crucixData.macro.vix.change.toFixed(1)})` : ""}${crucixData.macro.sp500 ? ` | S&P500: ${crucixData.macro.sp500.changePct > 0 ? "+" : ""}${crucixData.macro.sp500.changePct.toFixed(1)}%` : ""}${crucixData.macro.gold ? ` | Gold: ${crucixData.macro.gold.changePct > 0 ? "+" : ""}${crucixData.macro.gold.changePct.toFixed(1)}%` : ""}${crucixData.macro.oil ? ` | Oil: $${crucixData.macro.oil.price.toFixed(1)}` : ""}
+Geopolitical risk: ${crucixData.conflicts.summary}
+News sentiment: ${crucixData.news.sentiment} (${crucixData.news.conflictNews} conflict, ${crucixData.news.economyNews} economy articles)
+Top headlines: ${crucixData.news.topHeadlines.slice(0, 5).join(" | ")}
+${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.social.wallstreetbetsBuzz.slice(0, 3).join(" | ")}` : ""}` : "",
   ].filter(Boolean).join("");
 
   const client = new Anthropic({ apiKey });
