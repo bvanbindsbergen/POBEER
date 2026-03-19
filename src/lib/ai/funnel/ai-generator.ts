@@ -446,6 +446,7 @@ ${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
 
 /** Event types emitted by the streaming generator */
 export type AiStreamEvent =
+  | { type: "status"; message: string }
   | { type: "progress"; batchNum: number; totalBatches: number; strategies: GeneratedStrategy[]; message: string }
   | { type: "done"; totalGenerated: number; aiBaseCount: number; generationTimeMs: number; tokenUsage: AiGeneratorResult["tokenUsage"]; config: { timeframe: string; targetTotal: number } }
   | { type: "error"; message: string };
@@ -476,6 +477,8 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
   }
 
   const start = performance.now();
+
+  yield { type: "status", message: "Loading market data..." };
 
   // Gather market context (same as non-streaming)
   const symbolsToScan = (symbols?.length ? symbols : TOP_SYMBOLS.slice(0, 10)).slice(0, 10);
@@ -561,6 +564,8 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
   let lastRequestTime = 0;
   let idCounter = 0;
 
+  yield { type: "status", message: `Generating ${aiBaseCount} strategies in ${batches.length} batches...` };
+
   for (let i = 0; i < batches.length; i++) {
     const count = batches[i];
     const batchNum = i + 1;
@@ -570,6 +575,7 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
       const elapsed = Date.now() - lastRequestTime;
       const waitMs = RATE_LIMIT_DELAY_MS - elapsed;
       if (waitMs > 0) {
+        yield { type: "status", message: `Rate-limit pause before batch ${batchNum}/${batches.length} (~${Math.ceil(waitMs / 1000)}s)...` };
         await new Promise((r) => setTimeout(r, waitMs));
       }
     }

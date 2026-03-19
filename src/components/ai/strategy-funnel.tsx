@@ -420,7 +420,13 @@ export function StrategyFunnel({
           try {
             const event = JSON.parse(dataMatch[1]);
 
-            if (event.type === "progress") {
+            if (event.type === "status") {
+              setAiStreamProgress((prev) => ({
+                batchNum: prev?.batchNum || 0,
+                totalBatches: prev?.totalBatches || Math.ceil(aiBaseCount / 30),
+                message: event.message,
+              }));
+            } else if (event.type === "progress") {
               allStrategies = [...allStrategies, ...event.strategies];
               setGenerated(allStrategies);
               setSelected(new Set(allStrategies.map((s: GeneratedStrategy) => s.id)));
@@ -1005,9 +1011,8 @@ export function StrategyFunnel({
               {aiStreaming ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {aiStreamProgress
-                    ? `Batch ${aiStreamProgress.batchNum}/${aiStreamProgress.totalBatches} — ${generated.length} strategies`
-                    : "Connecting..."}
+                  {aiStreamProgress?.message || "Connecting..."}
+                  {generated.length > 0 && ` (${generated.length} strategies)`}
                 </>
               ) : (
                 <>
