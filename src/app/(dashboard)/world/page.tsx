@@ -20,13 +20,16 @@ export default function WorldPage() {
             Global intelligence dashboard — OSINT, markets, conflicts, sentiment
           </p>
         </div>
-        <div className="rounded-xl bg-amber-500/5 border border-amber-500/10 p-8 text-center space-y-3">
-          <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
-          <h2 className="text-lg font-semibold text-amber-300">Crucix Not Connected</h2>
-          <p className="text-sm text-slate-400 max-w-md mx-auto">
-            Set the <code className="text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_CRUCIX_URL</code> environment
-            variable to your Crucix deployment URL to enable the world intelligence dashboard.
-          </p>
+        <div className="rounded-xl bg-[#0a0f1a] border border-white/[0.06] p-12 text-center space-y-6">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/alphora-world-logo.png" alt="Alphora World" className="w-48 h-48 mx-auto object-contain opacity-80" />
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-slate-200">Alphora World Not Connected</h2>
+            <p className="text-sm text-slate-400 max-w-md mx-auto">
+              Set the <code className="text-violet-300 bg-violet-500/10 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_CRUCIX_URL</code> environment
+              variable to your Alphora World deployment URL to enable global intelligence.
+            </p>
+          </div>
         </div>
       </div>
     );
