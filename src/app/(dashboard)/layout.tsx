@@ -33,7 +33,6 @@ const navItems: NavItem[] = [
   { href: "/funds", label: "Funds", icon: Wallet },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/world", label: "World", icon: Globe },
 ];
 
 const leaderNavItems: NavItem[] = [
@@ -41,6 +40,7 @@ const leaderNavItems: NavItem[] = [
 ];
 
 const aiNavItem: NavItem = { href: "/ai", label: "AI Assistant", icon: Brain, highlight: true };
+const worldNavItem: NavItem = { href: "/world", label: "World", icon: Globe, highlight: true };
 
 export default function DashboardLayout({
   children,
@@ -88,10 +88,10 @@ export default function DashboardLayout({
     icon: Rocket,
   };
   const allNavItems = isLeader
-    ? [navItems[0], aiNavItem, ...navItems.slice(1), ...leaderNavItems]
+    ? [navItems[0], aiNavItem, worldNavItem, ...navItems.slice(1), ...leaderNavItems]
     : showOnboarding
       ? [onboardingNavItem, ...navItems]
-      : navItems;
+      : [navItems[0], worldNavItem, ...navItems.slice(1)];
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -141,7 +141,7 @@ export default function DashboardLayout({
                 {item.label}
                 {isHighlight && !isActive ? (
                   <span className="ml-auto text-[9px] font-bold uppercase tracking-wider bg-gradient-to-r from-violet-500 to-cyan-500 text-white px-1.5 py-0.5 rounded-full">
-                    AI
+                    {item.href === "/world" ? "OSINT" : "AI"}
                   </span>
                 ) : null}
                 {isActive && !isHighlight ? (
