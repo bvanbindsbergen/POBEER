@@ -405,45 +405,57 @@ export function StrategyFunnel({
       let buffer = "";
       let allStrategies: GeneratedStrategy[] = [];
 
+      const processEvent = (jsonStr: string) => {
+        const event = JSON.parse(jsonStr);
+        if (event.type === "status") {
+          setAiStreamProgress((prev) => ({
+            batchNum: prev?.batchNum || 0,
+            totalBatches: prev?.totalBatches || Math.ceil(aiBaseCount / 30),
+            message: event.message,
+          }));
+        } else if (event.type === "progress") {
+          allStrategies = [...allStrategies, ...event.strategies];
+          setGenerated(allStrategies);
+          setSelected(new Set(allStrategies.map((s: GeneratedStrategy) => s.id)));
+          setAiStreamProgress({
+            batchNum: event.batchNum,
+            totalBatches: event.totalBatches,
+            message: event.message,
+          });
+        } else if (event.type === "done") {
+          setAiCost(event.tokenUsage || null);
+          setStage(2);
+        } else if (event.type === "error") {
+          throw new Error(event.message);
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
 
-        for (const line of lines) {
-          const dataMatch = line.match(/^data:\s*([\s\S]*)/);
-          if (!dataMatch) continue;
+        // Process complete SSE events (terminated by double newline)
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const chunk = buffer.slice(0, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+          if (!chunk) continue;
 
-          try {
-            const event = JSON.parse(dataMatch[1]);
+          // Extract JSON from "data: {...}" lines
+          for (const line of chunk.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const jsonStr = trimmed.slice(5).trim();
+            if (!jsonStr) continue;
 
-            if (event.type === "status") {
-              setAiStreamProgress((prev) => ({
-                batchNum: prev?.batchNum || 0,
-                totalBatches: prev?.totalBatches || Math.ceil(aiBaseCount / 30),
-                message: event.message,
-              }));
-            } else if (event.type === "progress") {
-              allStrategies = [...allStrategies, ...event.strategies];
-              setGenerated(allStrategies);
-              setSelected(new Set(allStrategies.map((s: GeneratedStrategy) => s.id)));
-              setAiStreamProgress({
-                batchNum: event.batchNum,
-                totalBatches: event.totalBatches,
-                message: event.message,
-              });
-            } else if (event.type === "done") {
-              setAiCost(event.tokenUsage || null);
-              setStage(2);
-            } else if (event.type === "error") {
-              throw new Error(event.message);
+            try {
+              processEvent(jsonStr);
+            } catch (e) {
+              if (e instanceof SyntaxError) continue;
+              throw e;
             }
-          } catch (e) {
-            if (e instanceof SyntaxError) continue;
-            throw e;
           }
         }
       }
