@@ -218,6 +218,20 @@ Geopolitical risk: ${crucixData.conflicts.summary}
 News sentiment: ${crucixData.news.sentiment} (${crucixData.news.conflictNews} conflict, ${crucixData.news.economyNews} economy articles)
 Top headlines: ${crucixData.news.topHeadlines.slice(0, 5).join(" | ")}
 ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.social.wallstreetbetsBuzz.slice(0, 3).join(" | ")}` : ""}` : "",
+    // Crypto geographic intelligence
+    (() => {
+      if (!crucixData?.crypto) return "";
+      const c = crucixData.crypto;
+      const parts: string[] = ["\nCRYPTO GEO INTELLIGENCE:"];
+      if (c.whales.count > 0) {
+        parts.push(`- Whale flows: ${c.whales.count} transfers, $${(c.whales.totalUsd / 1e6).toFixed(0)}M total${c.whales.topFlow ? `, largest: ${c.whales.topFlow}` : ""}`);
+      }
+      parts.push(`- Liquidations: $${(c.liquidations.totalLong24h / 1e6).toFixed(0)}M longs / $${(c.liquidations.totalShort24h / 1e6).toFixed(0)}M shorts (bias: ${c.liquidations.bias})`);
+      if (c.trendingRegions.length > 0) {
+        parts.push(`- Trending regions: ${c.trendingRegions.join(", ")}`);
+      }
+      return parts.join("\n");
+    })(),
   ].filter(Boolean).join("");
 
   const client = new Anthropic({ apiKey });
@@ -271,6 +285,9 @@ IMPORTANT: Factor in the alternative data below when designing strategies:
 - If whale flows show accumulation (outflows > inflows) → favor long entries on dips
 - If whale flows show distribution (inflows > outflows) → favor quicker exits, tighter TPs
 - Adjust risk parameters (SL/TP) based on leverage crowding and sentiment extremes
+- Regional crypto demand spikes suggest local currency pressure — favor stablecoin/BTC pairs
+- Whale flow direction (exchange deposits vs withdrawals) indicates sell/accumulate pressure
+- Liquidation bias (long-heavy) suggests overleveraged longs — consider contrarian shorts
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}${diversityHint}
 
@@ -557,6 +574,20 @@ Geopolitical risk: ${crucixData.conflicts.summary}
 News sentiment: ${crucixData.news.sentiment} (${crucixData.news.conflictNews} conflict, ${crucixData.news.economyNews} economy articles)
 Top headlines: ${crucixData.news.topHeadlines.slice(0, 5).join(" | ")}
 ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.social.wallstreetbetsBuzz.slice(0, 3).join(" | ")}` : ""}` : "",
+    // Crypto geographic intelligence
+    (() => {
+      if (!crucixData?.crypto) return "";
+      const c = crucixData.crypto;
+      const parts: string[] = ["\nCRYPTO GEO INTELLIGENCE:"];
+      if (c.whales.count > 0) {
+        parts.push(`- Whale flows: ${c.whales.count} transfers, $${(c.whales.totalUsd / 1e6).toFixed(0)}M total${c.whales.topFlow ? `, largest: ${c.whales.topFlow}` : ""}`);
+      }
+      parts.push(`- Liquidations: $${(c.liquidations.totalLong24h / 1e6).toFixed(0)}M longs / $${(c.liquidations.totalShort24h / 1e6).toFixed(0)}M shorts (bias: ${c.liquidations.bias})`);
+      if (c.trendingRegions.length > 0) {
+        parts.push(`- Trending regions: ${c.trendingRegions.join(", ")}`);
+      }
+      return parts.join("\n");
+    })(),
   ].filter(Boolean).join("");
 
   const client = new Anthropic({ apiKey });
@@ -609,6 +640,9 @@ IMPORTANT: Factor in the alternative data below when designing strategies:
 - If whale flows show accumulation (outflows > inflows) → favor long entries on dips
 - If whale flows show distribution (inflows > outflows) → favor quicker exits, tighter TPs
 - Adjust risk parameters (SL/TP) based on leverage crowding and sentiment extremes
+- Regional crypto demand spikes suggest local currency pressure — favor stablecoin/BTC pairs
+- Whale flow direction (exchange deposits vs withdrawals) indicates sell/accumulate pressure
+- Liquidation bias (long-heavy) suggests overleveraged longs — consider contrarian shorts
 ${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}${diversityHint}
 
