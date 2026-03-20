@@ -36,6 +36,12 @@ export interface CrucixIntelligence {
     redditTopPosts: string[];
     wallstreetbetsBuzz: string[];
   };
+  // Crypto geographic intelligence
+  crypto: {
+    whales: { count: number; totalUsd: number; topFlow: string };
+    liquidations: { totalLong24h: number; totalShort24h: number; bias: string };
+    trendingRegions: string[];
+  };
   // One-line summary for prompt injection
   summary: string;
 }
@@ -107,6 +113,19 @@ function extractIntelligence(data: Record<string, unknown>): CrucixIntelligence 
   const wsbPosts = (subreddits["wallstreetbets"] || []).slice(0, 5).map((p) => p.title || "").filter(Boolean);
   const worldnews = (subreddits["worldnews"] || []).slice(0, 5).map((p) => p.title || "").filter(Boolean);
 
+  // Extract crypto geo data
+  const cryptoData = data.crypto as Record<string, unknown> | undefined;
+  const cryptoWhales = (cryptoData?.whales || []) as Array<{ usdValue: number; from: string; to: string; symbol: string }>;
+  const cryptoLiq = cryptoData?.liquidations as Record<string, unknown> | undefined;
+  const cryptoTrends = (cryptoData?.trends || []) as Array<{ country: string; interest: number }>;
+
+  const whaleTotal = cryptoWhales.reduce((s, w) => s + (w.usdValue || 0), 0);
+  const topWhale = cryptoWhales[0];
+  const topFlow = topWhale
+    ? `$${(topWhale.usdValue / 1e6).toFixed(1)}M ${topWhale.symbol} ${topWhale.from} → ${topWhale.to}`
+    : '';
+  const trendingRegions = cryptoTrends.slice(0, 3).map(t => `${t.country} (${t.interest})`);
+
   // Build summary
   const summaryParts: string[] = [];
   if (vixQ) summaryParts.push(`VIX: ${vixQ.price.toFixed(1)}`);
@@ -114,6 +133,8 @@ function extractIntelligence(data: Record<string, unknown>): CrucixIntelligence 
   if (oilQ) summaryParts.push(`Oil: $${oilQ.price.toFixed(1)}`);
   if (totalEvents > 0) summaryParts.push(`${totalEvents} conflict events (${totalFatalities} fatalities) in 7d`);
   if (hotspots.length > 0) summaryParts.push(`Hotspots: ${hotspots.join(", ")}`);
+  if (cryptoWhales.length > 0) summaryParts.push(`${cryptoWhales.length} whale txns ($${(whaleTotal/1e6).toFixed(0)}M)`);
+  if (trendingRegions.length > 0) summaryParts.push(`Crypto trending: ${trendingRegions.join(', ')}`);
 
   return {
     available: true,
@@ -143,6 +164,15 @@ function extractIntelligence(data: Record<string, unknown>): CrucixIntelligence 
     social: {
       redditTopPosts: worldnews,
       wallstreetbetsBuzz: wsbPosts,
+    },
+    crypto: {
+      whales: { count: cryptoWhales.length, totalUsd: whaleTotal, topFlow },
+      liquidations: {
+        totalLong24h: (cryptoLiq?.totalLong24h as number) || 0,
+        totalShort24h: (cryptoLiq?.totalShort24h as number) || 0,
+        bias: (cryptoLiq?.bias as string) || 'balanced',
+      },
+      trendingRegions,
     },
     summary: summaryParts.join(" | ") || "Crucix data unavailable",
   };
