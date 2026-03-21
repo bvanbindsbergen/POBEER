@@ -41,6 +41,35 @@ export interface AiGeneratorResult {
   config: { timeframe: string; targetTotal: number };
 }
 
+/** Check if user instructions mention social/alt-data indicators */
+function userWantsSocialData(prompt: string): boolean {
+  if (!prompt) return false;
+  const lower = prompt.toLowerCase();
+  return /social|reddit|google.?trend|sentiment|buzz|fomo|whale|funding/.test(lower);
+}
+
+/** Build the user instruction block — placed prominently at the top of the prompt */
+function buildUserInstructionBlock(userPrompt: string): string {
+  if (!userPrompt) return "";
+
+  const wantsSocial = userWantsSocialData(userPrompt);
+
+  // Map vague terms to actual indicator names so the AI knows exactly what to use
+  const mapping = wantsSocial
+    ? `\n(Indicator mapping for your instructions: "social scores/trends" = reddit_sentiment, reddit_buzz; "Google data/trends" = google_trends; "Reddit data" = reddit_sentiment, reddit_buzz; "whale data" = whale_flow_signal; "funding" = funding_rate, funding_signal)`
+    : "";
+
+  return `
+=== MANDATORY USER INSTRUCTIONS ===
+The user has given the following instructions. These OVERRIDE default behavior.
+Every strategy you generate MUST respect these instructions. Non-compliance = failure.
+
+"${userPrompt}"
+${mapping}
+=== END USER INSTRUCTIONS ===
+`;
+}
+
 type RawStrategy = {
   name: string;
   symbol: string;
@@ -277,8 +306,11 @@ ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.soci
         } strategies.`
       : "";
 
-    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    const wantsSocial = userWantsSocialData(userPrompt);
+    const altDataPct = wantsSocial ? 70 : 30;
 
+    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+${buildUserInstructionBlock(userPrompt)}
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
 - If Reddit/Google trends show extreme FOMO → favor conservative entries, contrarian setups
@@ -288,7 +320,6 @@ IMPORTANT: Factor in the alternative data below when designing strategies:
 - Regional crypto demand spikes suggest local currency pressure — favor stablecoin/BTC pairs
 - Whale flow direction (exchange deposits vs withdrawals) indicates sell/accumulate pressure
 - Liquidation bias (long-heavy) suggests overleveraged longs — consider contrarian shorts
-${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}${diversityHint}
 
 CURRENT MARKET DATA (last 14 days, ${timeframe} timeframe):
@@ -313,13 +344,14 @@ For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":2
 Respond ONLY with a JSON array. No markdown fences. No explanation. Compact JSON only.
 Each object:
 {"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
+${wantsSocial ? `{"name":"BTC Social FOMO Fade","symbol":"BTC/USDT","sourceSignal":"reddit_buzz+google_trends","tags":["social","contrarian"],"strategyConfig":{"entryConditions":[{"indicator":"reddit_buzz","operator":">","value":70},{"indicator":"google_trends","operator":">","value":75},{"indicator":"rsi","operator":">","value":65}],"exitConditions":[{"indicator":"reddit_buzz","operator":"<","value":40}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}`}}}` : ""}
 
 RULES:
 - 1-3 entry conditions, 1-2 exit conditions
-- Include alt data indicators in at least 30% of strategies (e.g. funding_signal, reddit_buzz, whale_flow_signal)
+- At least ${altDataPct}% of strategies MUST include alternative data indicators (reddit_sentiment, reddit_buzz, google_trends, funding_signal, whale_flow_signal)
 - Vary across coins AND indicator combinations
-- Names under 30 chars, compact JSON
-${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
+- Names under 30 chars, compact JSON${userPrompt ? `
+- CRITICAL: Re-read the USER INSTRUCTIONS above. Every strategy must reflect them.` : ""}`;
 
     // Retry up to 2 times on parse failure, with rate-limit backoff on 429
     const MAX_RETRIES = 2;
@@ -632,8 +664,11 @@ ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.soci
         } strategies.`
       : "";
 
-    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    const wantsSocial = userWantsSocialData(userPrompt);
+    const altDataPct = wantsSocial ? 70 : 30;
 
+    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+${buildUserInstructionBlock(userPrompt)}
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
 - If Reddit/Google trends show extreme FOMO → favor conservative entries, contrarian setups
@@ -643,7 +678,6 @@ IMPORTANT: Factor in the alternative data below when designing strategies:
 - Regional crypto demand spikes suggest local currency pressure — favor stablecoin/BTC pairs
 - Whale flow direction (exchange deposits vs withdrawals) indicates sell/accumulate pressure
 - Liquidation bias (long-heavy) suggests overleveraged longs — consider contrarian shorts
-${userPrompt ? `\nUSER INSTRUCTIONS (follow these closely):\n${userPrompt}` : ""}
 ${feedbackStr}${diversityHint}
 
 CURRENT MARKET DATA (last 14 days, ${timeframe} timeframe):
@@ -668,13 +702,14 @@ For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":2
 Respond ONLY with a JSON array. No markdown fences. No explanation. Compact JSON only.
 Each object:
 {"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
+${wantsSocial ? `{"name":"BTC Social FOMO Fade","symbol":"BTC/USDT","sourceSignal":"reddit_buzz+google_trends","tags":["social","contrarian"],"strategyConfig":{"entryConditions":[{"indicator":"reddit_buzz","operator":">","value":70},{"indicator":"google_trends","operator":">","value":75},{"indicator":"rsi","operator":">","value":65}],"exitConditions":[{"indicator":"reddit_buzz","operator":"<","value":40}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}`}}}` : ""}
 
 RULES:
 - 1-3 entry conditions, 1-2 exit conditions
-- Include alt data indicators in at least 30% of strategies (e.g. funding_signal, reddit_buzz, whale_flow_signal)
+- At least ${altDataPct}% of strategies MUST include alternative data indicators (reddit_sentiment, reddit_buzz, google_trends, funding_signal, whale_flow_signal)
 - Vary across coins AND indicator combinations
-- Names under 30 chars, compact JSON
-${userPrompt ? "- Prioritize the user's instructions above" : ""}`;
+- Names under 30 chars, compact JSON${userPrompt ? `
+- CRITICAL: Re-read the USER INSTRUCTIONS above. Every strategy must reflect them.` : ""}`;
 
     const MAX_RETRIES = 2;
     let batchStrategies: GeneratedStrategy[] = [];
