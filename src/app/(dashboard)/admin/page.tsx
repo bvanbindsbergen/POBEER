@@ -98,7 +98,7 @@ export default function AdminPage() {
     queryKey: ["admin"],
     queryFn: async () => {
       const res = await fetch("/api/admin");
-      if (!res.ok) return { followers: [], fees: [], workerHealth: null };
+      if (!res.ok) return { followers: [], fees: [], workerHealth: null, cronJobs: [], altDataStats: [] };
       return res.json();
     },
     refetchInterval: 10000,
@@ -108,6 +108,8 @@ export default function AdminPage() {
   const followers: Follower[] = adminData?.followers || [];
   const feeRecords: FeeRecord[] = adminData?.fees || [];
   const workerHealth = adminData?.workerHealth;
+  const cronJobs: { key: string; value: string | null; updatedAt: string | null }[] = adminData?.cronJobs || [];
+  const altDataStats: { source: string; field: string; count: number; minDate: string; maxDate: string }[] = adminData?.altDataStats || [];
   const invoiceRecords: InvoiceRecord[] = adminData?.invoices || [];
 
   if (user?.role !== "leader") {
@@ -231,6 +233,92 @@ export default function AdminPage() {
                 Last seen: {timeAgo(workerHealth.lastHeartbeat)}
               </p>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Cron Jobs & Alt Data Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="bg-[#111827] border-white/[0.06]">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Activity className="w-4 h-4 text-amber-400" />
+              Cron Jobs
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-white/[0.04]">
+                  <TableHead className="text-slate-500">Job</TableHead>
+                  <TableHead className="text-slate-500">Last Run</TableHead>
+                  <TableHead className="text-slate-500">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cronJobs.map((job) => {
+                  const label = job.key.replace("last_", "").replace(/_/g, " ");
+                  const isRecent = job.updatedAt
+                    ? Date.now() - new Date(job.updatedAt).getTime() < 2 * 60 * 60 * 1000
+                    : false;
+                  return (
+                    <TableRow key={job.key} className="border-white/[0.04]">
+                      <TableCell className="text-slate-300 capitalize text-sm">{label}</TableCell>
+                      <TableCell className="text-slate-400 text-sm">
+                        {job.updatedAt ? timeAgo(job.updatedAt) : "Never"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={isRecent ? "default" : job.value ? "secondary" : "destructive"}
+                          className={isRecent ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : !job.value ? "bg-red-500/15 text-red-400" : ""}>
+                          {isRecent ? "Healthy" : job.value ? "Stale" : "Never Run"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {cronJobs.length === 0 && (
+                  <TableRow><TableCell colSpan={3} className="text-center text-slate-500 py-4">No cron data found</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#111827] border-white/[0.06]">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4 text-cyan-400" />
+              Alt Data Coverage
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[300px] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04]">
+                    <TableHead className="text-slate-500">Source</TableHead>
+                    <TableHead className="text-slate-500">Field</TableHead>
+                    <TableHead className="text-slate-500 text-right">Rows</TableHead>
+                    <TableHead className="text-slate-500">Range</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {altDataStats.map((row, i) => (
+                    <TableRow key={i} className="border-white/[0.04]">
+                      <TableCell className="text-slate-300 text-sm">{row.source}</TableCell>
+                      <TableCell className="text-slate-400 text-sm">{row.field}</TableCell>
+                      <TableCell className="text-slate-300 text-sm text-right">{Number(row.count).toLocaleString()}</TableCell>
+                      <TableCell className="text-slate-500 text-[11px]">
+                        {row.minDate ? new Date(row.minDate).toLocaleDateString() : "—"} → {row.maxDate ? new Date(row.maxDate).toLocaleDateString() : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {altDataStats.length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="text-center text-slate-500 py-4">No alt data collected yet</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

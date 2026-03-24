@@ -9,6 +9,7 @@ import {
   systemConfig,
   invoices,
   balanceSnapshots,
+  altDataSnapshots,
 } from "@/lib/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 
@@ -144,12 +145,43 @@ export async function GET() {
       };
     });
 
+    // Cron job status from systemConfig
+    const cronKeys = [
+      "last_alt_data_collection",
+      "last_alt_data_backfill",
+    ];
+    const cronStatuses = await Promise.all(
+      cronKeys.map(async (key) => {
+        const [row] = await db
+          .select()
+          .from(systemConfig)
+          .where(eq(systemConfig.key, key))
+          .limit(1);
+        return { key, value: row?.value || null, updatedAt: row?.updatedAt || null };
+      })
+    );
+
+    // Alt data coverage stats: count rows and date range per source
+    const altDataStats = await db
+      .select({
+        source: altDataSnapshots.source,
+        field: altDataSnapshots.field,
+        count: sql<number>`count(*)`,
+        minDate: sql<string>`min(${altDataSnapshots.timestamp})::text`,
+        maxDate: sql<string>`max(${altDataSnapshots.timestamp})::text`,
+      })
+      .from(altDataSnapshots)
+      .groupBy(altDataSnapshots.source, altDataSnapshots.field)
+      .orderBy(altDataSnapshots.source, altDataSnapshots.field);
+
     return NextResponse.json({
       followers: enrichedFollowers,
       fees: enrichedFees,
       workerHealth: heartbeat
         ? { lastHeartbeat: heartbeat.value }
         : null,
+      cronJobs: cronStatuses,
+      altDataStats,
       invoices: enrichedInvoices,
     });
   } catch (error) {
