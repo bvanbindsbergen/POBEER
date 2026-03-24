@@ -184,7 +184,7 @@ class Worker {
 
       try {
         if (await this.altDataBackfiller.shouldRun()) {
-          console.log("[Worker] Running daily alt data backfill (180 days)...");
+          console.log("[Worker] Running daily alt data backfill (3 years)...");
           await this.altDataBackfiller.run();
         }
       } catch (err) {

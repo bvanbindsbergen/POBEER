@@ -27,7 +27,7 @@ function randomNoise(min: number, max: number): number {
 export class AltDataBackfiller {
   private days: number;
 
-  constructor(days = 180) {
+  constructor(days = 1095) {
     this.days = days;
   }
 
