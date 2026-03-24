@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -163,6 +164,38 @@ export default function AdminPage() {
     }
   }
 
+  const queryClient = useQueryClient();
+  const [collectRunning, setCollectRunning] = useState(false);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+
+  async function handleRunCollect() {
+    setCollectRunning(true);
+    try {
+      await fetch("/api/admin/collect-alt-data", { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: ["admin"] });
+    } catch (err) {
+      console.error("Alt data collection error:", err);
+    } finally {
+      setCollectRunning(false);
+    }
+  }
+
+  async function handleRunBackfill() {
+    setBackfillRunning(true);
+    try {
+      await fetch("/api/admin/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 1095 }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["admin"] });
+    } catch (err) {
+      console.error("Backfill error:", err);
+    } finally {
+      setBackfillRunning(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -253,6 +286,7 @@ export default function AdminPage() {
                   <TableHead className="text-slate-500">Job</TableHead>
                   <TableHead className="text-slate-500">Last Run</TableHead>
                   <TableHead className="text-slate-500">Status</TableHead>
+                  <TableHead className="text-slate-500">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -261,6 +295,10 @@ export default function AdminPage() {
                   const isRecent = job.updatedAt
                     ? Date.now() - new Date(job.updatedAt).getTime() < 2 * 60 * 60 * 1000
                     : false;
+                  const isCollection = job.key === "last_alt_data_collection";
+                  const isBackfill = job.key === "last_alt_data_backfill";
+                  const isRunning = isCollection ? collectRunning : isBackfill ? backfillRunning : false;
+                  const handler = isCollection ? handleRunCollect : isBackfill ? handleRunBackfill : undefined;
                   return (
                     <TableRow key={job.key} className="border-white/[0.04]">
                       <TableCell className="text-slate-300 capitalize text-sm">{label}</TableCell>
@@ -270,14 +308,34 @@ export default function AdminPage() {
                       <TableCell>
                         <Badge variant={isRecent ? "default" : job.value ? "secondary" : "destructive"}
                           className={isRecent ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : !job.value ? "bg-red-500/15 text-red-400" : ""}>
-                          {isRecent ? "Healthy" : job.value ? "Stale" : "Never Run"}
+                          {isRunning ? "Running..." : isRecent ? "Healthy" : job.value ? "Stale" : "Never Run"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {handler && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isRunning}
+                            onClick={handler}
+                            className="h-7 text-xs border-white/[0.08] hover:bg-white/[0.04]"
+                          >
+                            {isRunning ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                                Running...
+                              </span>
+                            ) : (
+                              "Run Now"
+                            )}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
                 })}
                 {cronJobs.length === 0 && (
-                  <TableRow><TableCell colSpan={3} className="text-center text-slate-500 py-4">No cron data found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} className="text-center text-slate-500 py-4">No cron data found</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
