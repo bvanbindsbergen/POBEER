@@ -13,10 +13,7 @@ import {
 } from "lucide-react";
 import type { StrategyConfig } from "@/lib/ai/backtest/types";
 
-const ALL_SYMBOLS = [
-  "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "NEAR/USDT",
-];
+import { ALL_SYMBOLS } from "@/lib/constants/symbols";
 
 const DATE_RANGES = [
   { label: "30d", days: 30 },

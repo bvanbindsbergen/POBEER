@@ -15,6 +15,7 @@ import { PendingTradeExpirer } from "./pending-trade-expirer";
 import { StrategyExecutor } from "./strategy-executor";
 import { GridExecutor } from "./grid-executor";
 import { AltDataCollector } from "./alt-data-collector";
+import { AltDataBackfiller } from "./alt-data-backfill";
 
 const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
 const SCHEDULER_INTERVAL = 5 * 60 * 1_000; // 5 minutes
@@ -33,6 +34,7 @@ class Worker {
   private strategyExecutor: StrategyExecutor;
   private gridExecutor: GridExecutor;
   private altDataCollector: AltDataCollector;
+  private altDataBackfiller: AltDataBackfiller;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private expirerTimer: NodeJS.Timeout | null = null;
@@ -58,6 +60,7 @@ class Worker {
     this.strategyExecutor = new StrategyExecutor();
     this.gridExecutor = new GridExecutor();
     this.altDataCollector = new AltDataCollector();
+    this.altDataBackfiller = new AltDataBackfiller();
   }
 
   async start() {
@@ -177,6 +180,15 @@ class Worker {
         }
       } catch (err) {
         console.error("[Worker] Alt data collection job error:", err);
+      }
+
+      try {
+        if (await this.altDataBackfiller.shouldRun()) {
+          console.log("[Worker] Running daily alt data backfill (180 days)...");
+          await this.altDataBackfiller.run();
+        }
+      } catch (err) {
+        console.error("[Worker] Alt data backfill job error:", err);
       }
     };
 

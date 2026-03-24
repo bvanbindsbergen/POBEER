@@ -12,12 +12,7 @@ import { eq, desc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
 
-const TOP_SYMBOLS = [
-  "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-  "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "POL/USDT",
-  "NEAR/USDT", "UNI/USDT", "ATOM/USDT", "LTC/USDT", "FIL/USDT",
-  "APT/USDT", "ARB/USDT", "OP/USDT", "INJ/USDT", "SUI/USDT",
-];
+import { TOP_20_SYMBOLS as TOP_SYMBOLS } from "@/lib/constants/symbols";
 
 export interface AiGeneratorConfig {
   count: number;
@@ -45,7 +40,7 @@ export interface AiGeneratorResult {
 function userWantsSocialData(prompt: string): boolean {
   if (!prompt) return false;
   const lower = prompt.toLowerCase();
-  return /social|reddit|google.?trend|sentiment|buzz|fomo|whale|funding/.test(lower);
+  return /social|reddit|google.?trend|sentiment|buzz|fomo|whale|funding|fear.?greed|lunarcrush|galaxy/.test(lower);
 }
 
 /** Build the user instruction block — placed prominently at the top of the prompt */
@@ -56,7 +51,7 @@ function buildUserInstructionBlock(userPrompt: string): string {
 
   // Map vague terms to actual indicator names so the AI knows exactly what to use
   const mapping = wantsSocial
-    ? `\n(Indicator mapping for your instructions: "social scores/trends" = reddit_sentiment, reddit_buzz; "Google data/trends" = google_trends; "Reddit data" = reddit_sentiment, reddit_buzz; "whale data" = whale_flow_signal; "funding" = funding_rate, funding_signal)`
+    ? `\n(Indicator mapping for your instructions: "social scores/trends" = reddit_sentiment, reddit_buzz, galaxy_score, social_volume; "Google data/trends" = google_trends; "Reddit data" = reddit_sentiment, reddit_buzz; "whale data" = whale_flow_signal; "funding" = funding_rate, funding_signal; "fear/greed" = fear_greed; "LunarCrush" = galaxy_score, social_volume, social_dominance)`
     : "";
 
   return `
@@ -224,7 +219,11 @@ export async function generateAiStrategies(config: AiGeneratorConfig): Promise<A
     .from(strategyFeedback)
     .where(eq(strategyFeedback.userId, userId))
     .orderBy(desc(strategyFeedback.createdAt))
-    .limit(20);
+    .limit(20)
+    .catch((e) => {
+      console.warn("[Funnel AI] Failed to fetch user feedback:", (e as Error).message);
+      return [] as { strategyName: string; symbol: string; action: string; reason: string | null }[];
+    });
 
   const feedbackStr = recentFeedback.length > 0
     ? `\n\nUSER PREFERENCE HISTORY (learn from these):\n${recentFeedback.map(
@@ -309,7 +308,7 @@ ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.soci
     const wantsSocial = userWantsSocialData(userPrompt);
     const altDataPct = wantsSocial ? 70 : 30;
 
-    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Include BOTH long and short strategies (aim for ~60% long, ~40% short). Each strategy must specify "side":"long" or "side":"short" in its strategyConfig. Short strategies profit when price drops. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 ${buildUserInstructionBlock(userPrompt)}
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
@@ -337,13 +336,17 @@ Available alternative data indicators (these ARE backtestable — historical dat
 - reddit_buzz: activity score (0-100, >80 = extreme)
 - google_trends: search interest (0-100, >80 = FOMO)
 - whale_flow_signal: exchange net flow direction (-100 to +100, negative=accumulation/bullish)
+- fear_greed: Crypto Fear & Greed Index (0-100, 0=extreme fear, 100=extreme greed)
+- galaxy_score: LunarCrush Galaxy Score per coin (0-100, higher=more social traction)
+- social_volume: LunarCrush social mentions volume per coin
+- social_dominance: LunarCrush social dominance % per coin
 Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":21}}
 
 Respond ONLY with a JSON array. No markdown fences. No explanation. Compact JSON only.
 Each object:
-{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
+{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"side":"long","entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
 ${wantsSocial ? `{"name":"BTC Social FOMO Fade","symbol":"BTC/USDT","sourceSignal":"reddit_buzz+google_trends","tags":["social","contrarian"],"strategyConfig":{"entryConditions":[{"indicator":"reddit_buzz","operator":">","value":70},{"indicator":"google_trends","operator":">","value":75},{"indicator":"rsi","operator":">","value":65}],"exitConditions":[{"indicator":"reddit_buzz","operator":"<","value":40}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}`}}}` : ""}
 
 RULES:
@@ -361,7 +364,7 @@ RULES:
         lastRequestTime = Date.now();
         const maxTokens = Math.min(Math.max(count * 350, 4096), 16384);
         const response = await client.messages.create({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: maxTokens,
           messages: [{ role: "user", content: prompt }],
         });
@@ -413,7 +416,12 @@ RULES:
           }
         }
 
-        if (attempt >= MAX_RETRIES) break;
+        // For non-API errors (e.g. malformed response), retry with delay
+        if (attempt >= MAX_RETRIES) {
+          const errMsg = err instanceof Error ? (err as Error).message : String(err);
+          throw new Error(`API error after ${MAX_RETRIES + 1} attempts: ${errMsg}`);
+        }
+        await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
       }
     }
     if (!batchParsed) {
@@ -433,6 +441,7 @@ RULES:
     symbol: s.symbol,
     strategyConfig: {
       name: s.name,
+      side: (s.strategyConfig as Record<string, unknown>)?.side === "short" ? "short" as const : "long" as const,
       entryConditions: (s.strategyConfig?.entryConditions || []) as unknown as GeneratedStrategy["strategyConfig"]["entryConditions"],
       exitConditions: (s.strategyConfig?.exitConditions || []) as unknown as GeneratedStrategy["strategyConfig"]["exitConditions"],
       ...(noRiskManagement ? {} : {
@@ -535,7 +544,7 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
 
   const start = performance.now();
 
-  yield { type: "status", message: "Loading market data..." };
+  yield { type: "status", message: "Fetching price data..." };
 
   // Gather market context (same as non-streaming)
   const symbolsToScan = (symbols?.length ? symbols : TOP_SYMBOLS.slice(0, 10)).slice(0, 10);
@@ -564,6 +573,8 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
     };
   }
 
+  yield { type: "status", message: "Loading alt data & intelligence..." };
+
   const [overview, derivatives, redditData, trendsData, whaleData, crucixData] = await Promise.all([
     fetchMarketOverview().catch(() => null),
     fetchDerivativesOverview(symbolsToScan.slice(0, 3)).catch(() => null),
@@ -572,6 +583,8 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
     fetchWhaleTransactions("btc").catch(() => null),
     fetchCrucixIntelligence().catch(() => null),
   ]);
+
+  yield { type: "status", message: "Preparing prompts..." };
 
   const recentFeedback = await db
     .select({
@@ -583,7 +596,11 @@ export async function* generateAiStrategiesStream(config: AiGeneratorConfig): As
     .from(strategyFeedback)
     .where(eq(strategyFeedback.userId, userId))
     .orderBy(desc(strategyFeedback.createdAt))
-    .limit(20);
+    .limit(20)
+    .catch((e) => {
+      console.warn("[Funnel AI] Failed to fetch user feedback:", (e as Error).message);
+      return [] as { strategyName: string; symbol: string; action: string; reason: string | null }[];
+    });
 
   const feedbackStr = recentFeedback.length > 0
     ? `\n\nUSER PREFERENCE HISTORY (learn from these):\n${recentFeedback.map(
@@ -667,7 +684,7 @@ ${crucixData.social.wallstreetbetsBuzz.length > 0 ? `WSB buzz: ${crucixData.soci
     const wantsSocial = userWantsSocialData(userPrompt);
     const altDataPct = wantsSocial ? 70 : 30;
 
-    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
+    const prompt = `Generate exactly ${count} diverse, creative trading strategies for backtesting on ${timeframe} candles. Include BOTH long and short strategies (aim for ~60% long, ~40% short). Each strategy must specify "side":"long" or "side":"short" in its strategyConfig. Short strategies profit when price drops. Focus on discovering NEW insights — unconventional indicator combinations, unusual parameter values, creative signal interpretations.
 ${buildUserInstructionBlock(userPrompt)}
 IMPORTANT: Factor in the alternative data below when designing strategies:
 - If funding rates show extreme longs → favor mean-reversion/short-bias entries or tighter stop losses
@@ -695,13 +712,17 @@ Available alternative data indicators (these ARE backtestable — historical dat
 - reddit_buzz: activity score (0-100, >80 = extreme)
 - google_trends: search interest (0-100, >80 = FOMO)
 - whale_flow_signal: exchange net flow direction (-100 to +100, negative=accumulation/bullish)
+- fear_greed: Crypto Fear & Greed Index (0-100, 0=extreme fear, 100=extreme greed)
+- galaxy_score: LunarCrush Galaxy Score per coin (0-100, higher=more social traction)
+- social_volume: LunarCrush social mentions volume per coin
+- social_dominance: LunarCrush social dominance % per coin
 Available operators: >, <, >=, <=, crosses_above, crosses_below
 For multi-value indicators use "field": macd→"macd"|"signal"|"histogram", bollinger→"upper"|"middle"|"lower", stochastic→"k"|"d"
 For indicator-vs-indicator: value can be {"indicator":"ema","params":{"period":21}}
 
 Respond ONLY with a JSON array. No markdown fences. No explanation. Compact JSON only.
 Each object:
-{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
+{"name":"SOL Trend Momentum","symbol":"SOL/USDT","sourceSignal":"EMA+RSI","tags":["trend","momentum"],"strategyConfig":{"side":"long","entryConditions":[{"indicator":"ema","params":{"period":9},"operator":"crosses_above","value":{"indicator":"ema","params":{"period":21}}},{"indicator":"rsi","operator":">","value":50}],"exitConditions":[{"indicator":"rsi","operator":">","value":75}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":4,"takeProfitPercent":10,"positionSizePercent":${positionSizePercent}`}}}
 ${wantsSocial ? `{"name":"BTC Social FOMO Fade","symbol":"BTC/USDT","sourceSignal":"reddit_buzz+google_trends","tags":["social","contrarian"],"strategyConfig":{"entryConditions":[{"indicator":"reddit_buzz","operator":">","value":70},{"indicator":"google_trends","operator":">","value":75},{"indicator":"rsi","operator":">","value":65}],"exitConditions":[{"indicator":"reddit_buzz","operator":"<","value":40}]${noRiskManagement ? ',"positionSizePercent":100' : `,"stopLossPercent":3,"takeProfitPercent":8,"positionSizePercent":${positionSizePercent}`}}}` : ""}
 
 RULES:
@@ -714,12 +735,14 @@ RULES:
     const MAX_RETRIES = 2;
     let batchStrategies: GeneratedStrategy[] = [];
 
+    yield { type: "status", message: `Batch ${batchNum}/${batches.length}: calling Claude...` };
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         lastRequestTime = Date.now();
         const maxTokens = Math.min(Math.max(count * 350, 4096), 16384);
         const response = await client.messages.create({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: maxTokens,
           messages: [{ role: "user", content: prompt }],
         });
@@ -772,7 +795,16 @@ RULES:
           await new Promise((r) => setTimeout(r, backoffMs));
           continue;
         }
-        if (attempt >= MAX_RETRIES) break;
+        // For non-API errors (e.g. JSON parse errors from malformed API responses),
+        // log and retry or yield error on final attempt
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[Funnel AI] Batch ${batchNum} attempt ${attempt + 1} error:`, errMsg);
+        if (attempt >= MAX_RETRIES) {
+          yield { type: "error", message: `API error after ${MAX_RETRIES + 1} attempts: ${errMsg}` };
+          return;
+        }
+        // Wait before retrying on unknown errors
+        await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY_MS));
       }
     }
 

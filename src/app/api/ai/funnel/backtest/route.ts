@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
           // totalPnl from engine is absolute dollars on $10k equity — convert to %
           const INITIAL_EQUITY = 10000;
-          const totalReturnPct = (result.totalPnl / INITIAL_EQUITY) * 100;
+          const totalReturnPct = Math.round((result.totalPnl / INITIAL_EQUITY) * 100 * 100) / 100;
 
           // Only include strategies that pass the minimum profit filter
           if (totalReturnPct >= minProfitPercent) {

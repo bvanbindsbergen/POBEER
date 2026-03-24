@@ -2,11 +2,12 @@ import { db } from "../lib/db";
 import { altDataSnapshots, systemConfig } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createExchange } from "../lib/exchange/client";
+import { FUNDING_RATE_SYMBOLS } from "../lib/constants/symbols";
 
 const CONFIG_KEY = "last_alt_data_collection";
 const COLLECTION_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-const TOP_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"];
+const TOP_SYMBOLS = FUNDING_RATE_SYMBOLS;
 
 // Reddit sentiment keywords
 const BULLISH_WORDS = [
@@ -50,6 +51,8 @@ export class AltDataCollector {
       this.collectRedditSentiment(timestamp),
       this.collectGoogleTrends(timestamp),
       this.collectWhaleFlows(timestamp),
+      this.collectFearAndGreed(timestamp),
+      this.collectLunarCrush(timestamp),
     ]);
 
     for (const result of results) {
@@ -244,6 +247,79 @@ export class AltDataCollector {
       }
     } catch (e) {
       console.error("[AltDataCollector] Google Trends error:", e);
+    }
+  }
+
+  private async collectFearAndGreed(timestamp: Date): Promise<void> {
+    try {
+      const res = await fetch("https://api.alternative.me/fng/?limit=1");
+      if (!res.ok) {
+        console.error("[AltDataCollector] Fear & Greed response not OK:", res.status);
+        return;
+      }
+
+      const json = await res.json();
+      const entry = json.data?.[0];
+      if (!entry) return;
+
+      const value = parseFloat(entry.value);
+      if (isNaN(value)) return;
+
+      await this.upsertSnapshot("fear_greed", null, "value", timestamp, value);
+      console.log("[AltDataCollector] Fear & Greed collected.");
+    } catch (e) {
+      console.error("[AltDataCollector] Fear & Greed error:", e);
+    }
+  }
+
+  private async collectLunarCrush(timestamp: Date): Promise<void> {
+    const apiKey = process.env.LUNARCRUSH_API_KEY;
+    if (!apiKey) return;
+
+    // Map LunarCrush base symbols to our trading pair format
+    const symbolMap: Record<string, string> = {
+      BTC: "BTC/USDT",
+      ETH: "ETH/USDT",
+      SOL: "SOL/USDT",
+      XRP: "XRP/USDT",
+      DOGE: "DOGE/USDT",
+    };
+
+    try {
+      const res = await fetch("https://lunarcrush.com/api4/public/coins/list", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) {
+        console.error("[AltDataCollector] LunarCrush response not OK:", res.status);
+        return;
+      }
+
+      const json = await res.json();
+      const coins: Array<{
+        symbol: string;
+        galaxy_score?: number;
+        social_volume?: number;
+        social_dominance?: number;
+      }> = json.data || [];
+
+      for (const coin of coins) {
+        const tradingSymbol = symbolMap[coin.symbol?.toUpperCase()];
+        if (!tradingSymbol) continue;
+
+        if (coin.galaxy_score != null) {
+          await this.upsertSnapshot("lunarcrush", tradingSymbol, "galaxy_score", timestamp, coin.galaxy_score);
+        }
+        if (coin.social_volume != null) {
+          await this.upsertSnapshot("lunarcrush", tradingSymbol, "social_volume", timestamp, coin.social_volume);
+        }
+        if (coin.social_dominance != null) {
+          await this.upsertSnapshot("lunarcrush", tradingSymbol, "social_dominance", timestamp, coin.social_dominance);
+        }
+      }
+
+      console.log("[AltDataCollector] LunarCrush data collected.");
+    } catch (e) {
+      console.error("[AltDataCollector] LunarCrush error:", e);
     }
   }
 

@@ -19,12 +19,17 @@ export type AltIndicatorName =
   | "reddit_bearish"     // Bearish post percentage (0-100)
   | "google_trends"      // Google search interest for "bitcoin" (0-100)
   | "whale_net_flow"     // Net exchange flow in USD (negative = accumulation)
-  | "whale_flow_signal"; // Scaled signal (-100 to +100, neg = accumulation)
+  | "whale_flow_signal"  // Scaled signal (-100 to +100, neg = accumulation)
+  | "fear_greed"         // Fear & Greed Index aggregate (0-100)
+  | "galaxy_score"       // LunarCrush Galaxy Score per-symbol
+  | "social_volume"      // LunarCrush social volume per-symbol
+  | "social_dominance";  // LunarCrush social dominance per-symbol
 
 export const ALT_INDICATOR_NAMES: AltIndicatorName[] = [
   "funding_rate", "funding_signal", "open_interest",
   "reddit_sentiment", "reddit_buzz", "reddit_bullish", "reddit_bearish",
   "google_trends", "whale_net_flow", "whale_flow_signal",
+  "fear_greed", "galaxy_score", "social_volume", "social_dominance",
 ];
 
 // Map indicator name to DB source+field
@@ -39,6 +44,10 @@ const INDICATOR_DB_MAP: Record<AltIndicatorName, { source: string; field: string
   google_trends:     { source: "google_trends", field: "bitcoin",         perSymbol: false },
   whale_net_flow:    { source: "whale_flow",   field: "net_flow",         perSymbol: false },
   whale_flow_signal: { source: "whale_flow",   field: "flow_signal",      perSymbol: false },
+  fear_greed:        { source: "fear_greed",   field: "value",            perSymbol: false },
+  galaxy_score:      { source: "lunarcrush",   field: "galaxy_score",     perSymbol: true },
+  social_volume:     { source: "lunarcrush",   field: "social_volume",    perSymbol: true },
+  social_dominance:  { source: "lunarcrush",   field: "social_dominance", perSymbol: true },
 };
 
 export function isAltIndicator(name: string): name is AltIndicatorName {

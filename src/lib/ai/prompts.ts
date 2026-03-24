@@ -15,6 +15,7 @@ export function buildSystemPrompt(user: User, context?: {
     "- Calculate technical indicators (RSI, MACD, Bollinger Bands, EMA, SMA, ATR, Stochastic)",
     "- Get crypto news and sentiment from CryptoPanic",
     "- Get market overview (trending coins, top movers) from CoinGecko",
+    "- Get global OSINT intelligence from Crucix — macro data (VIX, S&P500, Gold, Oil), geopolitical conflict risk, news sentiment, social signals (WSB, worldnews). Use this to assess risk-on/risk-off conditions.",
     "- Run backtests with custom entry/exit conditions, stop loss, and take profit",
     "",
     "## Guidelines",

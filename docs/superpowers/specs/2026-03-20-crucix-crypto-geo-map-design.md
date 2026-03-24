@@ -23,8 +23,8 @@ Follow the existing Crucix pattern: each data source is an independent module in
 |---|---|---|---|---|
 | `whale-alert.mjs` | Whale Alert REST API | `WHALE_ALERT_API_KEY` (env) | Fast (2.5 min) | Existing env var |
 | `coinglass.mjs` | CoinGlass public API | None (rate-limited) | Fast (2.5 min) | — |
-| `google-trends-geo.mjs` | SerpAPI (Google Trends) | `SERPAPI_KEY` (env) | Normal (15 min) | Existing in POBEER |
-| `p2p-volume.mjs` | Bisq public API + Hodl Hodl | None | Normal (15 min) | — |
+| `google-trends-geo.mjs` | SerpAPI (Google Trends) | `SERPAPI_KEY` (env) | Normal (60 min) | Existing in POBEER; 60-min default to stay within free tier |
+| `p2p-volume.mjs` | Bisq public API (offers endpoint) + Paxful (if available) | None | Normal (15 min) | Aggregate country-level volume from trade offers; fallback to hardcoded adoption index if APIs lack geo breakdown |
 | `bitnodes.mjs` | Bitnodes.io public API | None | Normal (15 min) | — |
 
 ### Source Output Schemas
@@ -292,8 +292,9 @@ New button group in the topbar:
 [🌍 OSINT]  [₿ Crypto]
 ```
 
-- Mutually exclusive focus modes, plus neutral "All" state
-- Clicking active mode returns to "All"
+- Mutually exclusive focus modes, plus neutral "All" state (default — both buttons appear unselected/dimmed)
+- Clicking active mode returns to "All" (button deselects)
+- Active button gets a bright border + filled background; inactive buttons are ghost/outline style
 - Keyboard shortcut: `C` toggles crypto focus
 
 ### Focus Mode Behavior
@@ -420,6 +421,7 @@ The iframe embed (`/world` page) continues to work as-is — it points to the Cr
 |---|---|
 | Whale Alert free tier rate limit (10 req/min) | 2.5 min cycle = 1 req per cycle, well within limit |
 | CoinGlass rate limiting (no published limits) | Respect 429 responses, exponential backoff, cache last good response |
-| SerpAPI 100/mo free tier | 15 min cycle = ~96 calls/day if always on; may need paid tier or reduce to hourly |
+| SerpAPI 100/mo free tier | Default to 60-min cycle (~48 calls/day); configurable via `TRENDS_INTERVAL_MINUTES` env var; upgrade to paid tier for 15-min resolution |
 | jarvis.html growing larger | Crypto UI code is additive (new layers + panels), no existing code restructuring needed |
 | Exchange geo mapping inaccuracy | Best-effort based on HQ locations; exchanges are global but HQ gives directional signal |
+| P2P API geo data availability | Bisq/Paxful may not expose country-level volume; fallback to Chainalysis adoption index as static baseline layer |

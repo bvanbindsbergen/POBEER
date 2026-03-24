@@ -20,6 +20,7 @@ export interface StrategyConfig {
   dcaEnabled?: boolean;
   dcaOrders?: number; // total DCA portions (e.g. 3 = initial + 2 more)
   dcaDropPercent?: number; // buy next portion when price drops X% from last buy
+  side?: "long" | "short";
 }
 
 export interface Trade {
@@ -29,7 +30,7 @@ export interface Trade {
   exitTimestamp: number;
   entryPrice: number;
   exitPrice: number;
-  side: "long";
+  side: "long" | "short";
   pnlPercent: number;
   pnlAbsolute: number;
 }

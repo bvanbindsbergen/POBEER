@@ -11,6 +11,7 @@ interface SignalVariation {
   exitConditions: Condition[];
   label: string;
   tag: string;
+  side?: "long" | "short";
 }
 
 /**
@@ -48,9 +49,24 @@ export function mapSignalToConditions(signal: string): SignalVariation[] {
     }));
   }
 
-  // RSI overbought (bearish — skip for long-only, but can use as exit confirmation)
+  // RSI overbought (bearish — short entries)
   if (lower.includes("rsi overbought")) {
-    return [];
+    return [
+      { entry: 70, exit: 30 },
+      { entry: 72, exit: 35 },
+      { entry: 75, exit: 40 },
+      { entry: 80, exit: 45 },
+    ].map(({ entry, exit }) => ({
+      entryConditions: [
+        { indicator: "rsi" as const, operator: ">" as const, value: entry },
+      ],
+      exitConditions: [
+        { indicator: "rsi" as const, operator: "<" as const, value: exit },
+      ],
+      label: `RSI>${entry}`,
+      tag: "rsi-overbought",
+      side: "short" as const,
+    }));
   }
 
   // MACD bullish crossover
@@ -91,9 +107,42 @@ export function mapSignalToConditions(signal: string): SignalVariation[] {
     }];
   }
 
-  // MACD bearish crossover (skip for long-only)
+  // MACD bearish crossover (short entries)
   if (lower.includes("macd bearish")) {
-    return [];
+    return [
+      {
+        entryConditions: [
+          {
+            indicator: "macd" as const,
+            field: "macd",
+            operator: "crosses_below" as const,
+            value: { indicator: "macd" as const, field: "signal" },
+          },
+        ],
+        exitConditions: [
+          {
+            indicator: "macd" as const,
+            field: "macd",
+            operator: "crosses_above" as const,
+            value: { indicator: "macd" as const, field: "signal" },
+          },
+        ],
+        label: "MACD↓",
+        tag: "macd-bear-cross",
+        side: "short" as const,
+      },
+      {
+        entryConditions: [
+          { indicator: "macd" as const, field: "histogram", operator: "<" as const, value: 0 },
+        ],
+        exitConditions: [
+          { indicator: "macd" as const, field: "histogram", operator: ">" as const, value: 0 },
+        ],
+        label: "MACDhist<0",
+        tag: "macd-bear-hist",
+        side: "short" as const,
+      },
+    ];
   }
 
   // Price at lower Bollinger Band
@@ -132,9 +181,52 @@ export function mapSignalToConditions(signal: string): SignalVariation[] {
     return [];
   }
 
-  // Price at upper Bollinger Band (bearish, skip for long-only)
+  // Price at upper Bollinger Band (bearish — short entries)
   if (lower.includes("upper bollinger")) {
-    return [];
+    return [
+      {
+        entryConditions: [
+          {
+            indicator: "sma" as const,
+            params: { period: 1 },
+            operator: ">" as const,
+            value: { indicator: "bollinger" as const, params: { period: 20 }, field: "upper" },
+          },
+        ],
+        exitConditions: [
+          {
+            indicator: "sma" as const,
+            params: { period: 1 },
+            operator: "<" as const,
+            value: { indicator: "bollinger" as const, params: { period: 20 }, field: "middle" },
+          },
+        ],
+        label: "BB20upper→mid",
+        tag: "bb-upper",
+        side: "short" as const,
+      },
+      {
+        entryConditions: [
+          {
+            indicator: "sma" as const,
+            params: { period: 1 },
+            operator: ">" as const,
+            value: { indicator: "bollinger" as const, params: { period: 20 }, field: "upper" },
+          },
+        ],
+        exitConditions: [
+          {
+            indicator: "sma" as const,
+            params: { period: 1 },
+            operator: "<" as const,
+            value: { indicator: "bollinger" as const, params: { period: 20 }, field: "lower" },
+          },
+        ],
+        label: "BB20upper→low",
+        tag: "bb-upper",
+        side: "short" as const,
+      },
+    ];
   }
 
   // EMA golden cross
@@ -164,9 +256,32 @@ export function mapSignalToConditions(signal: string): SignalVariation[] {
     }));
   }
 
-  // EMA death cross (bearish, skip)
+  // EMA death cross (bearish — short entries)
   if (lower.includes("death cross")) {
-    return [];
+    return [
+      { fast: 9, slow: 21 },
+      { fast: 12, slow: 50 },
+    ].map(({ fast, slow }) => ({
+      entryConditions: [
+        {
+          indicator: "ema" as const,
+          params: { period: fast },
+          operator: "crosses_below" as const,
+          value: { indicator: "ema" as const, params: { period: slow } },
+        },
+      ],
+      exitConditions: [
+        {
+          indicator: "ema" as const,
+          params: { period: fast },
+          operator: "crosses_above" as const,
+          value: { indicator: "ema" as const, params: { period: slow } },
+        },
+      ],
+      label: `EMA${fast}/${slow}↓`,
+      tag: "ema-death-cross",
+      side: "short" as const,
+    }));
   }
 
   // Stochastic oversold
@@ -183,9 +298,19 @@ export function mapSignalToConditions(signal: string): SignalVariation[] {
     }));
   }
 
-  // Stochastic overbought (bearish, skip)
+  // Stochastic overbought (bearish — short entries)
   if (lower.includes("stochastic overbought")) {
-    return [];
+    return [80, 85].map((threshold) => ({
+      entryConditions: [
+        { indicator: "stochastic" as const, field: "k", operator: ">" as const, value: threshold },
+      ],
+      exitConditions: [
+        { indicator: "stochastic" as const, field: "k", operator: "<" as const, value: threshold === 80 ? 20 : 15 },
+      ],
+      label: `StochK>${threshold}`,
+      tag: "stoch-overbought",
+      side: "short" as const,
+    }));
   }
 
   return [];

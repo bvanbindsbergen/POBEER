@@ -15,10 +15,9 @@ import { Plus, Trash2, Play } from "lucide-react";
 import type { StrategyConfig, Condition } from "@/lib/ai/backtest/types";
 import type { IndicatorName } from "@/lib/ai/indicators";
 
-const SYMBOLS = [
-  "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-  "ADA/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT", "MATIC/USDT",
-];
+import { ALL_SYMBOLS } from "@/lib/constants/symbols";
+
+const SYMBOLS = ALL_SYMBOLS;
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 const INDICATORS: { value: IndicatorName; label: string }[] = [
   { value: "rsi", label: "RSI" },
@@ -29,6 +28,21 @@ const INDICATORS: { value: IndicatorName; label: string }[] = [
   { value: "atr", label: "ATR" },
   { value: "stochastic", label: "Stochastic" },
   { value: "volume_sma", label: "Volume SMA" },
+  // Alt data indicators
+  { value: "reddit_sentiment", label: "Reddit Sentiment" },
+  { value: "reddit_buzz", label: "Reddit Buzz" },
+  { value: "reddit_bullish", label: "Reddit Bullish %" },
+  { value: "reddit_bearish", label: "Reddit Bearish %" },
+  { value: "google_trends", label: "Google Trends" },
+  { value: "funding_rate", label: "Funding Rate" },
+  { value: "funding_signal", label: "Funding Signal" },
+  { value: "open_interest", label: "Open Interest" },
+  { value: "whale_net_flow", label: "Whale Net Flow" },
+  { value: "whale_flow_signal", label: "Whale Flow Signal" },
+  { value: "fear_greed", label: "Fear & Greed" },
+  { value: "galaxy_score", label: "Galaxy Score" },
+  { value: "social_volume", label: "Social Volume" },
+  { value: "social_dominance", label: "Social Dominance" },
 ];
 const OPERATORS = [
   { value: ">", label: ">" },
@@ -101,6 +115,7 @@ export function BacktestConfig({
   const [positionSize, setPositionSize] = useState(
     initialConfig?.positionSizePercent?.toString() || "10"
   );
+  const [side, setSide] = useState<"long" | "short">(initialConfig?.side || "long");
 
   function updateCondition(
     list: Condition[],
@@ -123,6 +138,7 @@ export function BacktestConfig({
       startDate,
       endDate,
       strategyConfig: {
+        side,
         entryConditions,
         exitConditions,
         stopLossPercent: Number(stopLoss) || undefined,
@@ -157,7 +173,7 @@ export function BacktestConfig({
             <Select
               value={cond.indicator}
               onValueChange={(v) =>
-                updateCondition(conditions, setConditions, i, "indicator", v as unknown as number)
+                updateCondition(conditions, setConditions, i, "indicator", v)
               }
             >
               <SelectTrigger className="w-[calc(50%-4px)] sm:w-[140px] h-8 text-xs bg-[#070b12] border-white/[0.06]">
@@ -281,6 +297,35 @@ export function BacktestConfig({
             onChange={(e) => setEndDate(e.target.value)}
             className="h-9 text-sm bg-[#070b12] border-white/[0.06]"
           />
+        </div>
+      </div>
+
+      {/* Direction */}
+      <div className="flex items-center gap-2">
+        <Label className="text-xs text-slate-400">Direction</Label>
+        <div className="flex rounded-md overflow-hidden border border-white/[0.06]">
+          <button
+            type="button"
+            onClick={() => setSide("long")}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              side === "long"
+                ? "bg-emerald-500/20 text-emerald-400 border-r border-white/[0.06]"
+                : "bg-[#070b12] text-slate-500 border-r border-white/[0.06] hover:text-slate-300"
+            }`}
+          >
+            Long
+          </button>
+          <button
+            type="button"
+            onClick={() => setSide("short")}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              side === "short"
+                ? "bg-red-500/20 text-red-400"
+                : "bg-[#070b12] text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Short
+          </button>
         </div>
       </div>
 

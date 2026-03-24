@@ -264,4 +264,14 @@ export const aiTools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "get_crucix_intelligence",
+    description:
+      "Get global OSINT intelligence from Crucix (27 sources). Returns macro market data (VIX, S&P500, Gold, Oil, BTC, ETH), geopolitical conflict risk (ACLED events, fatalities, hotspots), news sentiment (conflict vs economy headlines), and social signals (Reddit worldnews, WallStreetBets buzz). Use this to assess geopolitical risk, macro conditions, and risk-on/risk-off sentiment before making trading decisions.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];

@@ -6,18 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Grid3x3, Plus, Loader2 } from "lucide-react";
 
-const POPULAR_PAIRS = [
-  "BTC/USDT",
-  "ETH/USDT",
-  "SOL/USDT",
-  "BNB/USDT",
-  "XRP/USDT",
-  "DOGE/USDT",
-  "ADA/USDT",
-  "AVAX/USDT",
-  "MATIC/USDT",
-  "LINK/USDT",
-];
+import { ALL_SYMBOLS } from "@/lib/constants/symbols";
+
+const POPULAR_PAIRS = ALL_SYMBOLS;
 
 interface GridStrategyFormProps {
   onCreated?: () => void;

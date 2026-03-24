@@ -24,6 +24,7 @@ import {
   Check,
 } from "lucide-react";
 import type { GeneratedStrategy } from "@/lib/ai/funnel/generator";
+import { ALL_SYMBOLS } from "@/lib/constants/symbols";
 import { PriceChart } from "./charts/price-chart";
 
 interface FunnelSignal {
@@ -46,6 +47,7 @@ interface TradeDetail {
   exitTimestamp: number;
   entryPrice: number;
   exitPrice: number;
+  side?: "long" | "short";
   pnlPercent: number;
   pnlAbsolute: number;
 }
@@ -198,10 +200,7 @@ export function StrategyFunnel({
     avgPnl: number;
   }>>(new Map());
 
-  const CV_SYMBOL_OPTIONS = [
-    "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT",
-    "ADA/USDT", "AVAX/USDT", "DOT/USDT", "LINK/USDT", "NEAR/USDT",
-  ];
+  const CV_SYMBOL_OPTIONS = ALL_SYMBOLS;
   const CV_RANGE_OPTIONS: { label: string; days: number }[] = [
     { label: "30d", days: 30 },
     { label: "60d", days: 60 },
@@ -1436,6 +1435,7 @@ export function StrategyFunnel({
                     </th>
                     <th className="text-left p-2">Name</th>
                     <th className="text-left p-2">Symbol</th>
+                    <th className="text-left p-2">Side</th>
                     <SortHeader field="totalPnl" label="PnL%" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="winRate" label="Win%" current={sortField} asc={sortAsc} onClick={handleSort} />
                     <SortHeader field="sharpeRatio" label="Sharpe" current={sortField} asc={sortAsc} onClick={handleSort} />
@@ -1484,6 +1484,15 @@ export function StrategyFunnel({
                             </span>
                           </td>
                           <td className="p-2 text-slate-400">{r.strategy.symbol.replace("/USDT", "")}</td>
+                          <td className="p-2">
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              r.strategy.strategyConfig.side === "short"
+                                ? "bg-red-500/15 text-red-400"
+                                : "bg-emerald-500/15 text-emerald-400"
+                            }`}>
+                              {(r.strategy.strategyConfig.side || "long").toUpperCase()}
+                            </span>
+                          </td>
                           <td className={`p-2 font-medium ${(r.metrics.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                             {(r.metrics.totalPnl ?? 0) >= 0 ? "+" : ""}{safeFixed(r.metrics.totalPnl, 1)}%
                           </td>
@@ -1676,7 +1685,7 @@ function StrategyDetail({ result, timeframe, daysBack, cvData }: { result: Funne
       {candles && candles.length > 0 ? (
         <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3">
           <div className="text-[10px] text-slate-600 mb-2 font-medium uppercase tracking-wider">Price Chart with Trade Markers</div>
-          <PriceChart candles={candles} trades={trades?.map((t) => ({ ...t, entryIndex: 0, exitIndex: 0, side: "long" as const }))} height={300} />
+          <PriceChart candles={candles} trades={trades?.map((t) => ({ ...t, entryIndex: 0, exitIndex: 0, side: (t.side || "long") as "long" | "short" }))} height={300} />
         </div>
       ) : !candleError ? (
         <div className="rounded-lg bg-[#111827] border border-white/[0.04] p-3 flex items-center justify-center py-6">

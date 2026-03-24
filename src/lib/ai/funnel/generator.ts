@@ -38,6 +38,7 @@ export function generateStrategies(config: FunnelConfig): GeneratedStrategy[] {
       exitConditions: Condition[];
       label: string;
       tag: string;
+      side?: "long" | "short";
     }[] = [];
 
     for (const signal of signals) {
@@ -64,6 +65,7 @@ export function generateStrategies(config: FunnelConfig): GeneratedStrategy[] {
               stopLossPercent: sl,
               takeProfitPercent: tp,
               positionSizePercent: config.positionSizePercent,
+              side: variation.side ?? "long",
             },
             sourceSignal: variation.label,
             tags: [variation.tag, `sl${sl}`, `tp${tp}`],
@@ -100,6 +102,7 @@ export function generateStrategies(config: FunnelConfig): GeneratedStrategy[] {
                   stopLossPercent: sl,
                   takeProfitPercent: tp,
                   positionSizePercent: config.positionSizePercent,
+                  side: combo.side ?? "long",
                 },
                 sourceSignal: `${combo.label}+${confirm.label}`,
                 tags: [combo.tag, confirm.tag, "combo", `sl${sl}`, `tp${tp}`],

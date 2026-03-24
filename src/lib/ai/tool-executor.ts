@@ -5,6 +5,7 @@ import { fetchWhaleTransactions } from "./data/whale-alert";
 import { fetchGoogleTrends } from "./data/google-trends";
 import { fetchDerivativesOverview } from "./data/funding-rates";
 import { fetchRedditSentiment } from "./data/reddit-sentiment";
+import { fetchCrucixIntelligence } from "./data/crucix";
 import { calculateIndicator, type IndicatorName } from "./indicators";
 import { runBacktest } from "./backtest/engine";
 import type { StrategyConfig } from "./backtest/types";
@@ -166,6 +167,14 @@ export async function executeToolCall(
       };
       const reddit = await fetchRedditSentiment(subreddits, currency);
       return JSON.stringify(reddit);
+    }
+
+    case "get_crucix_intelligence": {
+      const intel = await fetchCrucixIntelligence();
+      if (!intel) {
+        return JSON.stringify({ error: "Crucix OSINT not configured. Set CRUCIX_URL environment variable." });
+      }
+      return JSON.stringify(intel);
     }
 
     default:

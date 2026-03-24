@@ -5,7 +5,7 @@ import { buildSystemPrompt } from "./prompts";
 import type { User } from "@/lib/db/schema";
 
 const MAX_TOOL_ITERATIONS = 3;
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6";
 
 function getClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
