@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { altDataSnapshots } from "@/lib/db/schema";
-import { and, eq, gte, lte, isNull, asc } from "drizzle-orm";
+import { and, eq, gte, lte, isNull, asc, or, inArray } from "drizzle-orm";
 import type { Candle } from "./data/candles";
 
 /**
@@ -33,21 +33,22 @@ export const ALT_INDICATOR_NAMES: AltIndicatorName[] = [
 ];
 
 // Map indicator name to DB source+field
-const INDICATOR_DB_MAP: Record<AltIndicatorName, { source: string; field: string; perSymbol: boolean }> = {
-  funding_rate:      { source: "funding_rate", field: "rate",             perSymbol: true },
-  funding_signal:    { source: "funding_rate", field: "signal",           perSymbol: true },
-  open_interest:     { source: "funding_rate", field: "open_interest_usd", perSymbol: true },
-  reddit_sentiment:  { source: "reddit",       field: "sentiment",        perSymbol: false },
-  reddit_buzz:       { source: "reddit",       field: "buzz",             perSymbol: false },
-  reddit_bullish:    { source: "reddit",       field: "bullish_pct",      perSymbol: false },
-  reddit_bearish:    { source: "reddit",       field: "bearish_pct",      perSymbol: false },
-  google_trends:     { source: "google_trends", field: "bitcoin",         perSymbol: false },
-  whale_net_flow:    { source: "whale_flow",   field: "net_flow",         perSymbol: false },
-  whale_flow_signal: { source: "whale_flow",   field: "flow_signal",      perSymbol: false },
-  fear_greed:        { source: "fear_greed",   field: "value",            perSymbol: false },
-  galaxy_score:      { source: "lunarcrush",   field: "galaxy_score",     perSymbol: true },
-  social_volume:     { source: "lunarcrush",   field: "social_volume",    perSymbol: true },
-  social_dominance:  { source: "lunarcrush",   field: "social_dominance", perSymbol: true },
+// `sources` array allows matching both live and estimated/backfilled data
+const INDICATOR_DB_MAP: Record<AltIndicatorName, { sources: string[]; field: string; perSymbol: boolean }> = {
+  funding_rate:      { sources: ["funding_rate"],                field: "rate",             perSymbol: true },
+  funding_signal:    { sources: ["funding_rate"],                field: "signal",           perSymbol: true },
+  open_interest:     { sources: ["funding_rate"],                field: "open_interest_usd", perSymbol: true },
+  reddit_sentiment:  { sources: ["reddit", "reddit_estimated"],  field: "sentiment",        perSymbol: false },
+  reddit_buzz:       { sources: ["reddit", "reddit_estimated"],  field: "buzz",             perSymbol: false },
+  reddit_bullish:    { sources: ["reddit", "reddit_estimated"],  field: "bullish_pct",      perSymbol: false },
+  reddit_bearish:    { sources: ["reddit", "reddit_estimated"],  field: "bearish_pct",      perSymbol: false },
+  google_trends:     { sources: ["google_trends"],               field: "bitcoin",          perSymbol: false },
+  whale_net_flow:    { sources: ["whale_flow", "whale_estimated"], field: "net_flow",       perSymbol: false },
+  whale_flow_signal: { sources: ["whale_flow", "whale_estimated"], field: "flow_signal",    perSymbol: false },
+  fear_greed:        { sources: ["fear_greed"],                  field: "value",            perSymbol: false },
+  galaxy_score:      { sources: ["lunarcrush"],                  field: "galaxy_score",     perSymbol: true },
+  social_volume:     { sources: ["lunarcrush"],                  field: "social_volume",    perSymbol: true },
+  social_dominance:  { sources: ["lunarcrush"],                  field: "social_dominance", perSymbol: true },
 };
 
 export function isAltIndicator(name: string): name is AltIndicatorName {
@@ -80,8 +81,12 @@ export async function loadAltDataForCandles(
   const paddedStart = new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
   const endTime = new Date(candles[candles.length - 1].timestamp);
 
+  const sourceCondition = mapping.sources.length === 1
+    ? eq(altDataSnapshots.source, mapping.sources[0])
+    : inArray(altDataSnapshots.source, mapping.sources);
+
   const conditions = [
-    eq(altDataSnapshots.source, mapping.source),
+    sourceCondition,
     eq(altDataSnapshots.field, mapping.field),
     gte(altDataSnapshots.timestamp, paddedStart),
     lte(altDataSnapshots.timestamp, endTime),
